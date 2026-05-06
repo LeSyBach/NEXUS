@@ -1,0 +1,90 @@
+package com.example.nexus.feature_contact.viewmodel
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.nexus.core.utils.Resource
+import com.example.nexus.data.model.FriendRequest
+import com.example.nexus.data.model.User
+import com.example.nexus.data.repository.ContactRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+@HiltViewModel
+class ContactViewModel @Inject constructor(
+    private val contactRepository: ContactRepository
+) : ViewModel() {
+
+    private val _searchResults = MutableStateFlow<Resource<List<User>>>(Resource.Idle)
+    val searchResults: StateFlow<Resource<List<User>>> = _searchResults
+
+    private val _friendRequests = MutableStateFlow<Resource<List<FriendRequest>>>(Resource.Idle)
+    val friendRequests: StateFlow<Resource<List<FriendRequest>>> = _friendRequests
+
+    private val _friendsList = MutableStateFlow<Resource<List<User>>>(Resource.Idle)
+    val friendsList: StateFlow<Resource<List<User>>> = _friendsList
+
+    // One-shot navigation event
+    private val _navigateToChatEvent = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val navigateToChatEvent = _navigateToChatEvent.asSharedFlow()
+
+    init {
+        loadFriendRequests()
+        loadFriendsList()
+    }
+
+    fun searchUsers(query: String) {
+        if (query.isBlank()) {
+            _searchResults.value = Resource.Idle
+            return
+        }
+        viewModelScope.launch {
+            _searchResults.value = Resource.Loading
+            _searchResults.value = contactRepository.searchUsers(query.trim())
+        }
+    }
+
+    fun sendFriendRequest(toUserId: String) {
+        viewModelScope.launch {
+            contactRepository.sendFriendRequest(toUserId)
+        }
+    }
+
+    private fun loadFriendRequests() {
+        viewModelScope.launch {
+            contactRepository.observeReceivedRequests().collect { result ->
+                _friendRequests.value = result
+            }
+        }
+    }
+
+    fun respondToRequest(requestId: String, accept: Boolean, fromUserId: String) {
+        viewModelScope.launch {
+            val result = contactRepository.respondToRequest(requestId, accept, fromUserId)
+            if (result is Resource.Success && accept) {
+                loadFriendsList()
+            }
+        }
+    }
+
+    fun loadFriendsList() {
+        viewModelScope.launch {
+            _friendsList.value = Resource.Loading
+            _friendsList.value = contactRepository.getFriendsList()
+        }
+    }
+
+    /** Opens or creates the direct chat for [friendId] then emits its ID for navigation. */
+    fun startChatWithFriend(friendId: String) {
+        viewModelScope.launch {
+            val chatId = contactRepository.getDirectChatId(friendId)
+            if (chatId != null) {
+                _navigateToChatEvent.emit(chatId)
+            }
+        }
+    }
+}
