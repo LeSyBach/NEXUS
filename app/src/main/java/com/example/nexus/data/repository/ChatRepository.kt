@@ -68,4 +68,8 @@ class ChatRepository @Inject constructor(
             Resource.Error(e.message ?: "Failed to send message")
         }
     }
+
+    suspend fun getChatById(chatId: String): Chat? {
+        return firestoreService.getChat(chatId)
+    }
 }

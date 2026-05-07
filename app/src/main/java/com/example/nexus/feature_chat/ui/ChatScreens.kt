@@ -223,12 +223,18 @@ fun ChatListScreen(
                 items(chatsState.data.size) { index ->
                     val chat = chatsState.data[index]
                     val lastMessageText = chat.lastMessage?.text ?: "Chưa có tin nhắn"
-                    
+
                     val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
                     val timeStr = chat.lastMessage?.timestamp?.toDate()?.let { timeFormat.format(it) } ?: ""
 
+                    // Resolve display name: for direct chats show the other person's name
+                    var displayName by remember { mutableStateOf(chat.groupName.ifEmpty { "..." }) }
+                    LaunchedEffect(chat.id) {
+                        displayName = viewModel?.resolveDisplayName(chat) ?: chat.groupName
+                    }
+
                     ChatItem(
-                        name = "Chat Group ${chat.id.take(4)}", // Tạm thời dùng ID, sẽ thay bằng tên thực sau
+                        name = displayName,
                         lastMessage = lastMessageText,
                         time = timeStr,
                         unreadCount = 0,
@@ -236,17 +242,15 @@ fun ChatListScreen(
                         onClick = { onNavigateToConversation(chat.id) }
                     )
                 }
-            } else {
-                // Hiển thị Mock Data nếu chưa có dữ liệu thật (để duy trì UI đẹp)
-                items(5) { index ->
-                    ChatItem(
-                        name = if (index == 0) "Anh Em Sài Gòn" else if (index == 1) "Nguyễn Văn Hiếu" else "Người dùng $index",
-                        lastMessage = if (index == 0) "Tối nay 7h lẩu bò nha ae!" else if (index == 1) "Bạn: Ko niet" else "Đã gửi một nhãn dán",
-                        time = if (index == 1) "19:48" else "",
-                        unreadCount = if (index == 0) 2 else 0,
-                        isOnline = index % 3 == 0,
-                        onClick = { onNavigateToConversation("mock_chat_$index") }
-                    )
+            } else if (chatsState is Resource.Success && chatsState.data.isEmpty()) {
+                item {
+                    Box(modifier = Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Chưa có cuộc trò chuyện nào", color = Color.Gray, fontSize = 16.sp)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Kết bạn và bắt đầu nhắn tin!", color = NexusPrimary, fontSize = 14.sp)
+                        }
+                    }
                 }
             }
         }

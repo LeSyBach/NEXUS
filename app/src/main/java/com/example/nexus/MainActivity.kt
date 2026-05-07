@@ -17,6 +17,8 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.core.content.ContextCompat
 
 @AndroidEntryPoint
@@ -36,7 +38,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             NEXUSTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
+                Surface(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
                     val navController = rememberNavController()
                     val isLoggedIn = FirebaseAuth.getInstance().currentUser != null
                     NexusNavGraph(navController = navController, isLoggedIn = isLoggedIn)
