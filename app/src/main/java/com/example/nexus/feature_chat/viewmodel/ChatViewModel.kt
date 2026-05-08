@@ -2,6 +2,7 @@ package com.example.nexus.feature_chat.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.nexus.core.utils.Constants
 import com.example.nexus.core.utils.Resource
 import com.example.nexus.data.model.Chat
 import com.example.nexus.data.model.Message
@@ -24,11 +25,15 @@ class ChatViewModel @Inject constructor(
     private val _messagesState = MutableStateFlow<Resource<List<Message>>>(Resource.Idle)
     val messagesState: StateFlow<Resource<List<Message>>> = _messagesState
 
-    /** The other participant's info for a direct chat */
+    private val _currentChat = MutableStateFlow<Chat?>(null)
+    val currentChat: StateFlow<Chat?> = _currentChat
+
     private val _otherUser = MutableStateFlow<User?>(null)
     val otherUser: StateFlow<User?> = _otherUser
 
-    /** Cached map: participantId → User for resolving chat display names */
+    private val _onlineFriends = MutableStateFlow<List<User>>(emptyList())
+    val onlineFriends: StateFlow<List<User>> = _onlineFriends
+
     private val userCache = mutableMapOf<String, User>()
 
     val currentUserId: String?
@@ -42,11 +47,49 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             chatRepository.observeChats().collect { result ->
                 _chatsState.value = result
+                if (result is Resource.Success) {
+                    loadOnlineFriends(result.data)
+                }
             }
         }
     }
 
+    private fun loadOnlineFriends(chats: List<Chat>) {
+        viewModelScope.launch {
+            val myId = currentUserId ?: return@launch
+            val online = mutableListOf<User>()
+            for (chat in chats) {
+                if (chat.type != Constants.CHAT_TYPE_DIRECT) continue
+                val otherId = chat.participants.firstOrNull { it != myId } ?: continue
+                val cached = userCache[otherId]
+                val user = cached ?: chatRepository.getUserById(otherId)
+                if (user != null) {
+                    userCache[otherId] = user
+                    if (user.status == Constants.USER_STATUS_ONLINE) {
+                        online.add(user)
+                    }
+                }
+            }
+            _onlineFriends.value = online
+        }
+    }
+
     fun loadMessages(chatId: String) {
+        _messagesState.value = Resource.Loading
+        _otherUser.value = null
+        viewModelScope.launch {
+            val chat = chatRepository.getChatById(chatId)
+            _currentChat.value = chat
+            if (chat != null) {
+                val myId = currentUserId
+                val otherId = chat.participants.firstOrNull { it != myId }
+                if (otherId != null) {
+                    val user = chatRepository.getUserById(otherId)
+                    _otherUser.value = user
+                    if (user != null) userCache[otherId] = user
+                }
+            }
+        }
         viewModelScope.launch {
             chatRepository.observeMessages(chatId).collect { result ->
                 _messagesState.value = result
@@ -54,17 +97,16 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    /** Load the other participant's User object for a direct chat */
     fun loadOtherUser(chat: Chat) {
         val myId = currentUserId ?: return
         val otherId = chat.participants.firstOrNull { it != myId } ?: return
         viewModelScope.launch {
             val user = chatRepository.getUserById(otherId)
             _otherUser.value = user
+            if (user != null) userCache[otherId] = user
         }
     }
 
-    /** For a direct chat, load the other user by chatId */
     fun loadOtherUserByChatId(chatId: String) {
         viewModelScope.launch {
             val chat = chatRepository.getChatById(chatId)
@@ -72,9 +114,6 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    /** Resolve the display name for a chat.
-     *  For direct chats: show the other person's name.
-     *  For group chats: show groupName. */
     suspend fun resolveDisplayName(chat: Chat): String {
         if (chat.type == "group") {
             return chat.groupName.ifEmpty { "Nhóm" }
@@ -83,12 +122,10 @@ class ChatViewModel @Inject constructor(
         val otherId = chat.participants.firstOrNull { it != myId }
         if (otherId == null) return chat.groupName
 
-        // Check cache first
         userCache[otherId]?.let { user ->
             return user.displayName.ifEmpty { user.username }
         }
 
-        // Load and cache
         val user = chatRepository.getUserById(otherId)
         if (user != null) {
             userCache[otherId] = user
@@ -102,5 +139,11 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             chatRepository.sendMessage(chatId, text.trim())
         }
+    }
+
+    fun clearConversationState() {
+        _currentChat.value = null
+        _otherUser.value = null
+        _messagesState.value = Resource.Idle
     }
 }

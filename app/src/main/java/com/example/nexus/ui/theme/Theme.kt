@@ -6,15 +6,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
-
-// ══════════════════════════════════════════════════════════════
-// NEXUS Theme - Material 3 with Custom Color System
-// ══════════════════════════════════════════════════════════════
 
 private val NexusDarkColorScheme = darkColorScheme(
     primary = NexusPrimary,
@@ -84,13 +81,14 @@ fun NEXUSTheme(
     content: @Composable () -> Unit
 ) {
     val colorScheme = if (darkTheme) NexusDarkColorScheme else NexusLightColorScheme
+    val nexusColors = if (darkTheme) DarkNexusColors else LightNexusColors
 
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = Color.Transparent.toArgb()
-            window.navigationBarColor = Color.Transparent.toArgb()
+            window.statusBarColor = colorScheme.background.toArgb()
+            window.navigationBarColor = colorScheme.background.toArgb()
             WindowCompat.getInsetsController(window, view).apply {
                 isAppearanceLightStatusBars = !darkTheme
                 isAppearanceLightNavigationBars = !darkTheme
@@ -98,10 +96,15 @@ fun NEXUSTheme(
         }
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = NexusTypography,
-        shapes = NexusShapes,
-        content = content
-    )
+    CompositionLocalProvider(LocalNexusColors provides nexusColors) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = NexusTypography,
+            shapes = NexusShapes,
+            content = content
+        )
+    }
 }
+
+val MaterialTheme.nexusColors: NexusColors
+    @Composable get() = LocalNexusColors.current

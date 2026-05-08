@@ -207,7 +207,7 @@ class FirestoreService @Inject constructor(
                     return@addSnapshotListener
                 }
                 val messages = snapshot?.toObjects(Message::class.java) ?: emptyList()
-                trySend(messages.reversed())
+                trySend(messages)
             }
         awaitClose { listener.remove() }
     }
@@ -273,10 +273,23 @@ class FirestoreService @Inject constructor(
                     close(error)
                     return@addSnapshotListener
                 }
-                val requests = snapshot?.toObjects(FriendRequest::class.java) ?: emptyList()
+                val requests = snapshot?.documents?.mapNotNull { doc ->
+                    doc.toObject(FriendRequest::class.java)?.copy(id = doc.id)
+                } ?: emptyList()
                 trySend(requests)
             }
         awaitClose { listener.remove() }
+    }
+
+    suspend fun getSentRequestTargetIds(userId: String): Set<String> {
+        return firestore.collection(Constants.COLLECTION_FRIEND_REQUESTS)
+            .whereEqualTo("fromUserId", userId)
+            .whereEqualTo("status", Constants.FRIEND_REQUEST_PENDING)
+            .get()
+            .await()
+            .toObjects(FriendRequest::class.java)
+            .map { it.toUserId }
+            .toSet()
     }
 
     suspend fun acceptFriendRequest(requestId: String, fromUserId: String, toUserId: String) {

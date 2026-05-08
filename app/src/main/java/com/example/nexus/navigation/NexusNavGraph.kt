@@ -177,6 +177,9 @@ fun NexusNavGraph(
                 onNavigateToEdit = {
                     navController.navigate(Screen.EditProfile.route)
                 },
+                onNavigateToSettings = {
+                    navController.navigate(Screen.Settings.route)
+                },
                 onLogout = {
                     navController.navigate(Screen.Login.route) {
                         popUpTo(navController.graph.findStartDestination().id) {
@@ -243,6 +246,14 @@ fun NexusNavGraph(
             val profileViewModel: ProfileViewModel = hiltViewModel()
             EditProfileScreen(
                 viewModel = profileViewModel,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(Screen.Settings.route) {
+            val settingsViewModel: com.example.nexus.feature_profile.viewmodel.SettingsViewModel = hiltViewModel()
+            com.example.nexus.feature_profile.ui.SettingsScreen(
+                viewModel = settingsViewModel,
                 onNavigateBack = { navController.popBackStack() }
             )
         }

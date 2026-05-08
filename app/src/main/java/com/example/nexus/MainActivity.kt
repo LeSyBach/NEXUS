@@ -19,7 +19,10 @@ import android.os.Build
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.core.content.ContextCompat
+import jakarta.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -29,6 +32,9 @@ class MainActivity : ComponentActivity() {
         // Handle permission result if needed
     }
 
+    @Inject
+    lateinit var themeManager: com.example.nexus.core.utils.ThemeManager
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
@@ -37,7 +43,13 @@ class MainActivity : ComponentActivity() {
         askNotificationPermission()
 
         setContent {
-            NEXUSTheme {
+            val isDarkMode by themeManager.isDarkModeFlow.collectAsState(initial = null)
+            val useSystemTheme by themeManager.useSystemThemeFlow.collectAsState(initial = true)
+            
+            val isSystemDark = androidx.compose.foundation.isSystemInDarkTheme()
+            val darkTheme = if (useSystemTheme) isSystemDark else (isDarkMode ?: isSystemDark)
+
+            NEXUSTheme(darkTheme = darkTheme) {
                 Surface(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
                     val navController = rememberNavController()
                     val isLoggedIn = FirebaseAuth.getInstance().currentUser != null

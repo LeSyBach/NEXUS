@@ -45,6 +45,7 @@ sealed class Screen(
 
     // ── Profile ──
     data object EditProfile : Screen("edit_profile", "Chỉnh sửa")
+    data object Settings : Screen("settings", "Cài đặt")
 
     // ── Call ──
     data object OngoingCall : Screen("ongoing_call/{callId}", "Cuộc gọi") {

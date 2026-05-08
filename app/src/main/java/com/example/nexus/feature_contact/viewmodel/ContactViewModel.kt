@@ -25,16 +25,29 @@ class ContactViewModel @Inject constructor(
     private val _friendRequests = MutableStateFlow<Resource<List<FriendRequest>>>(Resource.Idle)
     val friendRequests: StateFlow<Resource<List<FriendRequest>>> = _friendRequests
 
+    private val _sentRequests = MutableStateFlow<Resource<List<FriendRequest>>>(Resource.Idle)
+    val sentRequests: StateFlow<Resource<List<FriendRequest>>> = _sentRequests
+
     private val _friendsList = MutableStateFlow<Resource<List<User>>>(Resource.Idle)
     val friendsList: StateFlow<Resource<List<User>>> = _friendsList
 
-    // One-shot navigation event
+    private val _sentRequestIds = MutableStateFlow<Set<String>>(emptySet())
+    val sentRequestIds: StateFlow<Set<String>> = _sentRequestIds
+
+    private val _sendRequestResult = MutableSharedFlow<String>()
+    val sendRequestResult = _sendRequestResult.asSharedFlow()
+
+    private val _respondResult = MutableSharedFlow<String>()
+    val respondResult = _respondResult.asSharedFlow()
+
     private val _navigateToChatEvent = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val navigateToChatEvent = _navigateToChatEvent.asSharedFlow()
 
     init {
         loadFriendRequests()
+        loadSentRequestsList()
         loadFriendsList()
+        loadSentRequestIds()
     }
 
     fun searchUsers(query: String) {
@@ -50,7 +63,12 @@ class ContactViewModel @Inject constructor(
 
     fun sendFriendRequest(toUserId: String) {
         viewModelScope.launch {
-            contactRepository.sendFriendRequest(toUserId)
+            val result = contactRepository.sendFriendRequest(toUserId)
+            if (result is Resource.Success) {
+                _sentRequestIds.value = _sentRequestIds.value + toUserId
+            } else if (result is Resource.Error) {
+                _sendRequestResult.emit(result.message)
+            }
         }
     }
 
@@ -62,11 +80,28 @@ class ContactViewModel @Inject constructor(
         }
     }
 
+    private fun loadSentRequestsList() {
+        viewModelScope.launch {
+            contactRepository.observeSentRequests().collect { result ->
+                _sentRequests.value = result
+            }
+        }
+    }
+
+    private fun loadSentRequestIds() {
+        viewModelScope.launch {
+            val ids = contactRepository.getSentRequestTargetIds()
+            _sentRequestIds.value = ids
+        }
+    }
+
     fun respondToRequest(requestId: String, accept: Boolean, fromUserId: String) {
         viewModelScope.launch {
             val result = contactRepository.respondToRequest(requestId, accept, fromUserId)
             if (result is Resource.Success && accept) {
                 loadFriendsList()
+            } else if (result is Resource.Error) {
+                _respondResult.emit(result.message)
             }
         }
     }
@@ -78,7 +113,6 @@ class ContactViewModel @Inject constructor(
         }
     }
 
-    /** Opens or creates the direct chat for [friendId] then emits its ID for navigation. */
     fun startChatWithFriend(friendId: String) {
         viewModelScope.launch {
             val chatId = contactRepository.getDirectChatId(friendId)
@@ -87,4 +121,7 @@ class ContactViewModel @Inject constructor(
             }
         }
     }
+
+    val receivedRequestCount: Int
+        get() = (friendRequests.value as? Resource.Success)?.data?.size ?: 0
 }

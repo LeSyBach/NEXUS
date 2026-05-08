@@ -1,23 +1,28 @@
 package com.example.nexus.feature_chat.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
@@ -25,27 +30,25 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.text.BasicTextField
-import com.example.nexus.feature_chat.viewmodel.ChatViewModel
-import com.example.nexus.core.utils.Resource
-import java.text.SimpleDateFormat
-import java.util.Locale
-import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.nexus.core.utils.Constants
+import com.example.nexus.core.utils.DateUtils
+import com.example.nexus.core.utils.Resource
+import com.example.nexus.feature_chat.viewmodel.ChatViewModel
 import com.example.nexus.navigation.Screen
 import com.example.nexus.ui.components.NexusBottomBar
-import com.example.nexus.ui.theme.DarkBackground
-import com.example.nexus.ui.theme.DarkCard
 import com.example.nexus.ui.theme.GradientEnd
 import com.example.nexus.ui.theme.GradientStart
 import com.example.nexus.ui.theme.NexusPrimary
+import com.example.nexus.ui.theme.nexusColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,14 +59,16 @@ fun ChatListScreen(
     onNavigateToSearch: () -> Unit,
     onNavigateToTab: (String) -> Unit = {}
 ) {
+    val nc = MaterialTheme.nexusColors
     val chatsState = viewModel?.chatsState?.collectAsState()?.value ?: Resource.Idle
+    val onlineFriendsState = viewModel?.onlineFriends?.collectAsState()?.value ?: emptyList()
     var showAddMenu by remember { mutableStateOf(false) }
     Scaffold(
         floatingActionButton = {
             FloatingActionButton(
                 onClick = onNavigateToCreateGroup,
                 containerColor = Color(0xFF5A55FF),
-                contentColor = Color.White,
+                contentColor = nc.sentBubbleText,
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.size(64.dp)
             ) {
@@ -76,7 +81,7 @@ fun ChatListScreen(
                 onNavigate = onNavigateToTab
             )
         },
-        containerColor = DarkBackground
+        containerColor = nc.background
     ) { paddingValues ->
         LazyColumn(
             modifier = Modifier
@@ -84,7 +89,6 @@ fun ChatListScreen(
                 .padding(paddingValues),
             contentPadding = PaddingValues(bottom = 80.dp)
         ) {
-            // 1. HEADER: Logo NEXUS
             item {
                 Text(
                     text = "NEXUS",
@@ -100,7 +104,6 @@ fun ChatListScreen(
                 )
             }
 
-            // 2. SEARCH BAR & THÊM MỚI (+)
             item {
                 Row(
                     modifier = Modifier
@@ -108,41 +111,39 @@ fun ChatListScreen(
                         .padding(horizontal = 20.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Thanh Tìm kiếm
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .background(Color(0xFF1E1E2A), RoundedCornerShape(24.dp))
+                            .background(nc.searchBg, RoundedCornerShape(24.dp))
                             .clickable { onNavigateToSearch() }
                             .padding(horizontal = 16.dp, vertical = 14.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Search, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(22.dp))
+                            Icon(Icons.Default.Search, contentDescription = null, tint = nc.textSecondary, modifier = Modifier.size(22.dp))
                             Spacer(modifier = Modifier.width(12.dp))
-                            Text("Tìm kiếm, AI...", color = Color.Gray, fontSize = 15.sp, maxLines = 1)
+                            Text("Tìm kiếm, AI...", color = nc.textSecondary, fontSize = 15.sp, maxLines = 1)
                         }
                     }
                     
                     Spacer(modifier = Modifier.width(12.dp))
                     
-                    // Nút Dấu Cộng (+) và Dropdown Menu
                     Box {
                         IconButton(
                             onClick = { showAddMenu = true },
                             modifier = Modifier
                                 .size(48.dp)
-                                .background(DarkCard, CircleShape)
+                                .background(nc.cardBg, CircleShape)
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = "Thêm mới", tint = Color.White)
+                            Icon(Icons.Default.Add, contentDescription = "Thêm mới", tint = nc.textPrimary)
                         }
 
                         DropdownMenu(
                             expanded = showAddMenu,
                             onDismissRequest = { showAddMenu = false },
-                            modifier = Modifier.background(DarkCard)
+                            modifier = Modifier.background(nc.cardBg)
                         ) {
                             DropdownMenuItem(
-                                text = { Text("Thêm bạn", color = Color.White) },
+                                text = { Text("Thêm bạn", color = nc.textPrimary) },
                                 leadingIcon = { Icon(Icons.Default.PersonAdd, contentDescription = null, tint = NexusPrimary) },
                                 onClick = {
                                     showAddMenu = false
@@ -150,7 +151,7 @@ fun ChatListScreen(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("Tạo nhóm", color = Color.White) },
+                                text = { Text("Tạo nhóm", color = nc.textPrimary) },
                                 leadingIcon = { Icon(Icons.Default.GroupAdd, contentDescription = null, tint = NexusPrimary) },
                                 onClick = {
                                     showAddMenu = false
@@ -162,11 +163,10 @@ fun ChatListScreen(
                 }
             }
 
-            // 3. ONLINE FRIENDS: Trực tuyến (Ngang)
             item {
                 Text(
                     text = "ĐANG TRỰC TUYẾN",
-                    color = Color.Gray,
+                    color = nc.textSecondary,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(start = 20.dp, top = 24.dp, bottom = 12.dp)
@@ -176,43 +176,40 @@ fun ChatListScreen(
                     contentPadding = PaddingValues(horizontal = 20.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    // Nút Tạo mới / Thêm bạn (Mới)
                     item {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Box(
                                 modifier = Modifier
                                     .size(64.dp)
-                                    .border(1.dp, Color.DarkGray, CircleShape)
+                                    .border(1.dp, nc.outline, CircleShape)
                                     .clickable { onNavigateToSearch() },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Default.Add, contentDescription = "Add", tint = Color.Gray, modifier = Modifier.size(28.dp))
+                                Icon(Icons.Default.Add, contentDescription = "Add", tint = nc.textSecondary, modifier = Modifier.size(28.dp))
                             }
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text("Mới", color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                            Text("Mới", color = nc.textSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                         }
                     }
-                    
-                    // Danh sách bạn bè trực tuyến
-                    val onlineFriends = listOf("Anh", "Lê", "Nguyễn", "Trần", "Phạm")
-                    items(onlineFriends.size) { index ->
-                        OnlineFriendItem(name = onlineFriends[index])
+
+                    items(onlineFriendsState.size) { index ->
+                        val friend = onlineFriendsState[index]
+                        val name = friend.displayName.ifEmpty { friend.username }
+                        OnlineFriendItem(name = name)
                     }
                 }
             }
 
-            // 4. TIÊU ĐỀ TRÒ CHUYỆN
             item {
                 Text(
                     text = "TRÒ CHUYỆN",
-                    color = Color.Gray,
+                    color = nc.textSecondary,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(start = 20.dp, top = 32.dp, bottom = 12.dp)
                 )
             }
 
-            // 5. CHAT LIST (Dọc)
             if (chatsState is Resource.Loading) {
                 item {
                     Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
@@ -224,20 +221,21 @@ fun ChatListScreen(
                     val chat = chatsState.data[index]
                     val lastMessageText = chat.lastMessage?.text ?: "Chưa có tin nhắn"
 
-                    val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
-                    val timeStr = chat.lastMessage?.timestamp?.toDate()?.let { timeFormat.format(it) } ?: ""
+                    val timeStr = chat.lastMessage?.timestamp?.toDate()?.let { DateUtils.formatChatTime(it.time) } ?: ""
 
-                    // Resolve display name: for direct chats show the other person's name
                     var displayName by remember { mutableStateOf(chat.groupName.ifEmpty { "..." }) }
                     LaunchedEffect(chat.id) {
                         displayName = viewModel?.resolveDisplayName(chat) ?: chat.groupName
                     }
 
+                    val myId = viewModel?.currentUserId
+                    val unreadCount = if (myId != null) chat.lastMessage?.unreadCount?.get(myId) ?: 0 else 0
+
                     ChatItem(
                         name = displayName,
                         lastMessage = lastMessageText,
                         time = timeStr,
-                        unreadCount = 0,
+                        unreadCount = unreadCount,
                         isOnline = false,
                         onClick = { onNavigateToConversation(chat.id) }
                     )
@@ -246,7 +244,7 @@ fun ChatListScreen(
                 item {
                     Box(modifier = Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Chưa có cuộc trò chuyện nào", color = Color.Gray, fontSize = 16.sp)
+                            Text("Chưa có cuộc trò chuyện nào", color = nc.textSecondary, fontSize = 16.sp)
                             Spacer(modifier = Modifier.height(8.dp))
                             Text("Kết bạn và bắt đầu nhắn tin!", color = NexusPrimary, fontSize = 14.sp)
                         }
@@ -259,11 +257,11 @@ fun ChatListScreen(
 
 @Composable
 fun OnlineFriendItem(name: String) {
+    val nc = MaterialTheme.nexusColors
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier.size(64.dp)
         ) {
-            // Avatar với viền Gradient cực ngầu
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -275,24 +273,23 @@ fun OnlineFriendItem(name: String) {
                     )
                     .padding(4.dp)
                     .clip(CircleShape)
-                    .background(Color.DarkGray),
+                    .background(nc.avatarBg),
                 contentAlignment = Alignment.Center
             ) {
-                Text(name.first().toString(), color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text(name.first().toString(), color = nc.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             }
             
-            // Chấm Online xanh lá góc phải dưới
             Box(
                 modifier = Modifier
                     .size(16.dp)
                     .clip(CircleShape)
                     .background(Color(0xFF22C55E))
-                    .border(2.dp, DarkBackground, CircleShape)
+                    .border(2.dp, nc.background, CircleShape)
                     .align(Alignment.BottomEnd)
             )
         }
         Spacer(modifier = Modifier.height(8.dp))
-        Text(name, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        Text(name, color = nc.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -305,94 +302,121 @@ fun ChatItem(
     isOnline: Boolean,
     onClick: () -> Unit
 ) {
-    Row(
+    val nc = MaterialTheme.nexusColors
+    val isUnread = unreadCount > 0
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .then(
+                if (isUnread) Modifier.background(nc.unreadBadge.copy(alpha = 0.06f))
+                else Modifier
+            )
     ) {
-        // Avatar trong danh sách chat
-        Box(modifier = Modifier.size(60.dp)) {
+        if (isUnread) {
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .clip(CircleShape)
-                    .background(Color.DarkGray),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(text = name.first().toString(), color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-            }
-            
-            if (isOnline) {
-                // Chấm Online xanh lá
+                    .width(3.dp)
+                    .fillMaxHeight()
+                    .background(nc.unreadBadge)
+                    .align(Alignment.CenterStart)
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(modifier = Modifier.size(56.dp)) {
                 Box(
                     modifier = Modifier
-                        .size(16.dp)
+                        .fillMaxSize()
                         .clip(CircleShape)
-                        .background(Color(0xFF22C55E))
-                        .border(2.dp, DarkBackground, CircleShape)
-                        .align(Alignment.BottomEnd)
-                )
-            }
-        }
-        
-        Spacer(modifier = Modifier.width(16.dp))
-        
-        Column(modifier = Modifier.weight(1f)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = name,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                if (time.isNotEmpty()) {
-                    Text(
-                        text = time,
-                        color = Color.Gray,
-                        fontSize = 12.sp
+                        .background(Brush.linearGradient(listOf(NexusPrimary.copy(alpha = 0.4f), nc.cardBg))),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = name.first().toString(), color = nc.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                }
+                
+                if (isOnline) {
+                    Box(
+                        modifier = Modifier
+                            .size(14.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF22C55E))
+                            .border(2.dp, nc.background, CircleShape)
+                            .align(Alignment.BottomEnd)
                     )
                 }
             }
             
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.width(14.dp))
             
-            Text(
-                text = lastMessage,
-                color = if (unreadCount > 0) Color.White else Color.Gray,
-                fontSize = 14.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                fontWeight = if (unreadCount > 0) FontWeight.Bold else FontWeight.Normal
-            )
-        }
-        
-        if (unreadCount > 0) {
-            Box(
-                modifier = Modifier
-                    .padding(start = 12.dp)
-                    .size(24.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF5A55FF)), // Nền thông báo xanh tím
-                contentAlignment = Alignment.Center
-            ) {
-                Text(text = unreadCount.toString(), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = name,
+                        color = if (isUnread) nc.unreadMessageText else nc.textPrimary,
+                        fontWeight = if (isUnread) FontWeight.Bold else FontWeight.SemiBold,
+                        fontSize = 15.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (time.isNotEmpty()) {
+                        Text(
+                            text = time,
+                            color = if (isUnread) nc.unreadTimeText else nc.textSecondary,
+                            fontWeight = if (isUnread) FontWeight.SemiBold else FontWeight.Normal,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(4.dp))
+                
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = lastMessage,
+                        color = if (isUnread) nc.unreadMessageText else nc.textSecondary,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontWeight = if (isUnread) FontWeight.SemiBold else FontWeight.Normal,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (isUnread) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(20.dp)
+                                .clip(CircleShape)
+                                .background(nc.unreadBadge),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (unreadCount > 99) "99+" else unreadCount.toString(),
+                                color = nc.unreadBadgeText,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
             }
         }
     }
 }
 
-// ---------------------------------------------------------
-// Tạm giữ các hàm giữ chỗ cũ cho màn hình khác trong luồng Chat
-// ---------------------------------------------------------
+// ══════════════════════════════════════════════════════════
+//  CONVERSATION SCREEN
+// ══════════════════════════════════════════════════════════
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConversationScreen(
@@ -401,166 +425,325 @@ fun ConversationScreen(
     onNavigateBack: () -> Unit,
     onNavigateToGroupInfo: (String) -> Unit
 ) {
+    val nc = MaterialTheme.nexusColors
     var messageText by remember { mutableStateOf("") }
     val messagesState = viewModel?.messagesState?.collectAsState()?.value ?: Resource.Idle
     val currentUserId = viewModel?.currentUserId
+    val currentChat = viewModel?.currentChat?.collectAsState()?.value
+    val otherUser = viewModel?.otherUser?.collectAsState()?.value
+    val listState = rememberLazyListState()
 
     LaunchedEffect(chatId) {
         viewModel?.loadMessages(chatId)
     }
-    
-    Scaffold(
-        topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(DarkBackground)
-                    .padding(horizontal = 8.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onNavigateBack) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
-                }
-                
-                // Avatar
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(Color.DarkGray),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("A", color = Color.White, fontWeight = FontWeight.Bold)
-                }
-                
-                Spacer(modifier = Modifier.width(12.dp))
-                
-                // Tên & Trạng thái
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { onNavigateToGroupInfo(chatId) }
-                ) {
-                    Text("Anh Em Sài Gòn", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    Text("Đang hoạt động", color = Color(0xFF22C55E), fontSize = 12.sp)
-                }
-                
-                IconButton(onClick = { /* Gọi thoại */ }) {
-                    Icon(Icons.Default.Call, contentDescription = "Call", tint = NexusPrimary)
-                }
-                IconButton(onClick = { /* Gọi Video */ }) {
-                    Icon(Icons.Default.Videocam, contentDescription = "Video", tint = NexusPrimary)
-                }
+
+    val isGroup = currentChat?.type == Constants.CHAT_TYPE_GROUP
+    val displayName = if (isGroup) {
+        currentChat?.groupName?.ifEmpty { "Nhóm" } ?: "Nhóm"
+    } else {
+        otherUser?.let { it.displayName.ifEmpty { it.username } } ?: "Đang tải..."
+    }
+    val statusText = if (isGroup) {
+        "${currentChat?.participants?.size ?: 0} thành viên"
+    } else {
+        if (otherUser?.status == Constants.USER_STATUS_ONLINE) "Đang hoạt động"
+        else otherUser?.lastSeen?.let { DateUtils.formatLastSeen(it.toDate().time) } ?: ""
+    }
+    val avatarInitial = displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(nc.background)
+            .imePadding()
+    ) {
+        // ── Top Bar ──
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(nc.background)
+                .padding(horizontal = 4.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onNavigateBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = nc.textPrimary)
             }
-        },
-        bottomBar = {
-            Row(
+
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .background(DarkBackground)
-                    .padding(horizontal = 12.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Brush.linearGradient(listOf(NexusPrimary.copy(alpha = 0.6f), nc.cardBg))),
+                contentAlignment = Alignment.Center
             ) {
-                IconButton(onClick = { /* Thêm Media */ }) {
-                    Icon(Icons.Outlined.AddCircleOutline, contentDescription = "Add", tint = NexusPrimary)
-                }
-                IconButton(onClick = { /* Chụp ảnh */ }) {
-                    Icon(Icons.Default.CameraAlt, contentDescription = "Camera", tint = NexusPrimary)
-                }
-                
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .background(DarkCard, RoundedCornerShape(20.dp))
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
-                ) {
-                    if (messageText.isEmpty()) {
-                        Text("Nhắn tin...", color = Color.Gray, fontSize = 16.sp)
-                    }
-                    BasicTextField(
-                        value = messageText,
-                        onValueChange = { messageText = it },
-                        textStyle = TextStyle(color = Color.White, fontSize = 16.sp),
-                        modifier = Modifier.fillMaxWidth()
+                Text(avatarInitial, color = nc.textPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            }
+
+            Spacer(modifier = Modifier.width(10.dp))
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { onNavigateToGroupInfo(chatId) }
+            ) {
+                Text(
+                    displayName,
+                    color = nc.textPrimary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (statusText.isNotEmpty()) {
+                    Text(
+                        statusText,
+                        color = if (!isGroup && otherUser?.status == Constants.USER_STATUS_ONLINE) Color(0xFF22C55E) else nc.textSecondary,
+                        fontSize = 12.sp
                     )
                 }
-                
-                Spacer(modifier = Modifier.width(4.dp))
-                
-                if (messageText.isNotEmpty()) {
-                    IconButton(onClick = { 
-                        viewModel?.sendMessage(chatId, messageText)
-                        messageText = "" 
-                    }) {
-                        Icon(Icons.Default.Send, contentDescription = "Send", tint = NexusPrimary)
-                    }
-                } else {
-                    IconButton(onClick = { /* Voice message */ }) {
-                        Icon(Icons.Default.Mic, contentDescription = "Mic", tint = NexusPrimary)
-                    }
-                }
             }
-        },
-        containerColor = DarkBackground
-    ) { paddingValues ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues),
-            reverseLayout = true,
-            contentPadding = PaddingValues(16.dp)
-        ) {
-            if (messagesState is Resource.Loading) {
-                item {
-                    Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = NexusPrimary)
-                    }
-                }
-            } else if (messagesState is Resource.Success && messagesState.data.isNotEmpty()) {
-                val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
-                items(messagesState.data.size) { index ->
-                    val msg = messagesState.data[index]
-                    val isMe = msg.senderId == currentUserId
-                    val timeStr = msg.timestamp?.toDate()?.let { timeFormat.format(it) } ?: ""
-                    MessageBubble(text = msg.text, isMe = isMe, time = timeStr)
-                }
-            } else {
-                // MOCK DATA (Hiển thị tạm nếu chưa có tin nhắn thật)
-                item { MessageBubble(text = "Ok nha bạn!", isMe = true, time = "19:50") }
-                item { MessageBubble(text = "Nhớ mang theo laptop nhé.", isMe = false, time = "19:49") }
-                item { MessageBubble(text = "Tối nay 7h lẩu bò nha ae!", isMe = false, time = "19:48") }
-                item { MessageBubble(text = "Chào mọi người", isMe = true, time = "19:45") }
+
+            IconButton(onClick = { }) {
+                Icon(Icons.Default.Call, contentDescription = "Call", tint = NexusPrimary, modifier = Modifier.size(22.dp))
+            }
+            IconButton(onClick = { }) {
+                Icon(Icons.Default.Videocam, contentDescription = "Video", tint = NexusPrimary, modifier = Modifier.size(22.dp))
             }
         }
+
+        // Divider
+        Box(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(nc.divider))
+
+        // ── Messages ──
+        LazyColumn(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            state = listState,
+            reverseLayout = true,
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+        ) {
+            when (messagesState) {
+                is Resource.Loading -> {
+                    item {
+                        Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = NexusPrimary, strokeWidth = 2.dp)
+                        }
+                    }
+                }
+                is Resource.Success -> {
+                    if (messagesState.data.isEmpty()) {
+                        item {
+                            Box(modifier = Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(72.dp)
+                                            .clip(CircleShape)
+                                            .background(NexusPrimary.copy(alpha = 0.1f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Outlined.ChatBubbleOutline,
+                                            contentDescription = null,
+                                            tint = NexusPrimary.copy(alpha = 0.6f),
+                                            modifier = Modifier.size(36.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Text("Chưa có tin nhắn nào", color = nc.textSecondary, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text("Gửi tin nhắn để bắt đầu trò chuyện!", color = nc.textSecondary, fontSize = 13.sp)
+                                }
+                            }
+                        }
+                    } else {
+                        items(messagesState.data.size) { index ->
+                            val msg = messagesState.data[index]
+                            val isMe = msg.senderId == currentUserId
+                            val timeStr = msg.timestamp?.toDate()?.let { DateUtils.formatMessageTime(it.time) } ?: ""
+
+                            val showDateSeparator = if (index < messagesState.data.size - 1) {
+                                val currDate = msg.timestamp?.toDate()
+                                val nextDate = messagesState.data[index + 1].timestamp?.toDate()
+                                currDate != null && nextDate != null &&
+                                    java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.getDefault()).format(currDate) !=
+                                    java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.getDefault()).format(nextDate)
+                            } else if (index == messagesState.data.size - 1) {
+                                true
+                            } else false
+
+                            MessageBubble(
+                                text = msg.text,
+                                isMe = isMe,
+                                time = timeStr,
+                                showDateSeparator = showDateSeparator,
+                                dateSeparatorText = msg.timestamp?.toDate()?.let { DateUtils.formatDateSeparator(it.time) } ?: ""
+                            )
+                        }
+                    }
+                }
+                is Resource.Error -> {
+                    item {
+                        Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                            Text("Lỗi tải tin nhắn", color = nc.textSecondary, fontSize = 14.sp)
+                        }
+                    }
+                }
+                else -> {}
+            }
+        }
+
+        // ── Input Bar ──
+        Box(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(nc.divider))
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(nc.background)
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            IconButton(
+                onClick = { },
+                modifier = Modifier.size(44.dp)
+            ) {
+                Icon(Icons.Outlined.AddCircleOutline, contentDescription = "Add", tint = NexusPrimary, modifier = Modifier.size(24.dp))
+            }
+            IconButton(
+                onClick = { },
+                modifier = Modifier.size(44.dp)
+            ) {
+                Icon(Icons.Default.CameraAlt, contentDescription = "Camera", tint = NexusPrimary, modifier = Modifier.size(22.dp))
+            }
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .background(nc.cardBg, RoundedCornerShape(24.dp))
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+            ) {
+                if (messageText.isEmpty()) {
+                    Text("Nhắn tin...", color = nc.textSecondary, fontSize = 15.sp)
+                }
+                BasicTextField(
+                    value = messageText,
+                    onValueChange = { messageText = it },
+                    textStyle = TextStyle(color = nc.textPrimary, fontSize = 15.sp),
+                    cursorBrush = SolidColor(NexusPrimary),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            Spacer(modifier = Modifier.width(4.dp))
+
+            AnimatedVisibility(visible = messageText.isNotEmpty(), enter = fadeIn(), exit = fadeOut()) {
+                IconButton(
+                    onClick = {
+                        viewModel?.sendMessage(chatId, messageText)
+                        messageText = ""
+                    },
+                    modifier = Modifier
+                        .size(44.dp)
+                        .background(NexusPrimary, CircleShape)
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = nc.sentBubbleText, modifier = Modifier.size(20.dp))
+                }
+            }
+
+            AnimatedVisibility(visible = messageText.isEmpty(), enter = fadeIn(), exit = fadeOut()) {
+                IconButton(
+                    onClick = { },
+                    modifier = Modifier.size(44.dp)
+                ) {
+                    Icon(Icons.Default.Mic, contentDescription = "Mic", tint = NexusPrimary, modifier = Modifier.size(24.dp))
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.navigationBarsPadding())
     }
 }
 
 @Composable
-fun MessageBubble(text: String, isMe: Boolean, time: String) {
+fun MessageBubble(
+    text: String,
+    isMe: Boolean,
+    time: String,
+    showDateSeparator: Boolean = false,
+    dateSeparatorText: String = ""
+) {
+    val nc = MaterialTheme.nexusColors
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = 2.dp),
         horizontalAlignment = if (isMe) Alignment.End else Alignment.Start
     ) {
-        Box(
-            modifier = Modifier
-                .background(
-                    brush = if (isMe) Brush.linearGradient(listOf(Color(0xFF5A55FF), Color(0xFF00E5FF))) 
-                            else Brush.linearGradient(listOf(DarkCard, DarkCard)),
-                    shape = RoundedCornerShape(
-                        topStart = 18.dp,
-                        topEnd = 18.dp,
-                        bottomStart = if (isMe) 18.dp else 4.dp,
-                        bottomEnd = if (isMe) 4.dp else 18.dp
-                    )
+        if (showDateSeparator && dateSeparatorText.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = dateSeparatorText,
+                    color = nc.textTertiary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier
+                        .background(
+                            nc.divider,
+                            RoundedCornerShape(12.dp)
+                        )
+                        .padding(horizontal = 14.dp, vertical = 5.dp)
                 )
-                .padding(horizontal = 16.dp, vertical = 12.dp)
-        ) {
-            Text(text = text, color = Color.White, fontSize = 16.sp)
+            }
         }
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(text = time, color = Color.Gray, fontSize = 11.sp)
+
+        Row(
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            if (!isMe) {
+                Spacer(modifier = Modifier.width(4.dp))
+            }
+
+            Column(
+                horizontalAlignment = if (isMe) Alignment.End else Alignment.Start
+            ) {
+                Box(
+                    modifier = Modifier
+                        .widthIn(max = 280.dp)
+                        .background(
+                            brush = if (isMe) Brush.linearGradient(listOf(Color(0xFF5A55FF), Color(0xFF3B82F6)))
+                                    else SolidColor(nc.receivedBubble),
+                            shape = RoundedCornerShape(
+                                topStart = if (isMe) 18.dp else 4.dp,
+                                topEnd = if (isMe) 4.dp else 18.dp,
+                                bottomStart = 18.dp,
+                                bottomEnd = 18.dp
+                            )
+                        )
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                ) {
+                    Text(text = text, color = if (isMe) nc.sentBubbleText else nc.receivedBubbleText, fontSize = 15.sp, lineHeight = 20.sp)
+                }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = time,
+                    color = nc.textTertiary,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+            }
+
+            if (isMe) {
+                Spacer(modifier = Modifier.width(4.dp))
+            }
+        }
     }
 }
 
@@ -569,7 +752,8 @@ fun CreateGroupScreen(
     onNavigateBack: () -> Unit,
     onGroupCreated: (String) -> Unit
 ) {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    val nc = MaterialTheme.nexusColors
+    Box(modifier = Modifier.fillMaxSize().background(nc.background), contentAlignment = Alignment.Center) {
         Button(onClick = { onGroupCreated("new_group_id") }) {
             Text("Create Group Screen")
         }

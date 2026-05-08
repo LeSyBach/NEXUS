@@ -47,7 +47,17 @@ class ContactRepository @Inject constructor(
                 return Resource.Error("Đã gửi lời mời kết bạn rồi")
             }
 
-            val fromUser = firestoreService.getUser(fromUserId)
+            val reverse = firestoreService.checkExistingFriendRequest(toUserId, fromUserId)
+            if (reverse != null) {
+                return Resource.Error("Người này đã gửi lời mời kết bạn cho bạn rồi")
+            }
+
+            val currentUser = firestoreService.getUser(fromUserId)
+            if (currentUser != null && toUserId in currentUser.friends) {
+                return Resource.Error("Đã là bạn bè rồi")
+            }
+
+            val fromUser = currentUser
             val toUser   = firestoreService.getUser(toUserId)
 
             val request = FriendRequest(
@@ -149,4 +159,13 @@ class ContactRepository @Inject constructor(
             emit(Resource.Success(requests))
         }
     }.catch { emit(Resource.Error(it.message ?: "Lỗi tải yêu cầu đã gửi")) }
+
+    suspend fun getSentRequestTargetIds(): Set<String> {
+        return try {
+            val userId = getCurrentUserId() ?: return emptySet()
+            firestoreService.getSentRequestTargetIds(userId)
+        } catch (e: Exception) {
+            emptySet()
+        }
+    }
 }

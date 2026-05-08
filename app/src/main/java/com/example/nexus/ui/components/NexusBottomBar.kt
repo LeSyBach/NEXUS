@@ -6,37 +6,37 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.nexus.navigation.BottomNavItem
 import com.example.nexus.navigation.bottomNavItems
-import com.example.nexus.ui.theme.DarkCard
-import com.example.nexus.ui.theme.NexusPrimary
+import com.example.nexus.ui.theme.nexusColors
 
 @Composable
 fun NexusBottomBar(
     currentRoute: String?,
     onNavigate: (String) -> Unit
 ) {
-    // Glassmorphism background for BottomBar
+    val nc = MaterialTheme.nexusColors
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 16.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp)
             .clip(RoundedCornerShape(24.dp))
-            .background(DarkCard.copy(alpha = 0.8f))
+            .background(nc.bottomBarBg)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 12.dp, horizontal = 8.dp),
+                .padding(vertical = 10.dp, horizontal = 8.dp),
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -46,9 +46,7 @@ fun NexusBottomBar(
                     item = item,
                     isSelected = isSelected,
                     onClick = {
-                        if (!isSelected) {
-                            onNavigate(item.screen.route)
-                        }
+                        if (!isSelected) onNavigate(item.screen.route)
                     }
                 )
             }
@@ -62,8 +60,9 @@ private fun BottomBarItem(
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
+    val nc = MaterialTheme.nexusColors
     val interactionSource = remember { MutableInteractionSource() }
-    val color = if (isSelected) NexusPrimary else Color.Gray
+    val color = if (isSelected) MaterialTheme.colorScheme.primary else nc.textTertiary
     val icon = if (isSelected) item.selectedIcon else item.unselectedIcon
 
     Column(
@@ -87,7 +86,7 @@ private fun BottomBarItem(
             text = item.label,
             color = color,
             fontSize = 10.sp,
-            fontWeight = if (isSelected) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
         )
     }
 }

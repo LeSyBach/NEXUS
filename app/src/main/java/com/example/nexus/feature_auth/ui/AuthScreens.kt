@@ -22,8 +22,8 @@ import androidx.compose.ui.unit.sp
 import com.example.nexus.ui.components.GlassCard
 import com.example.nexus.ui.components.NexusGradientButton
 import com.example.nexus.ui.components.NexusTextField
-import com.example.nexus.ui.theme.DarkBackground
 import com.example.nexus.ui.theme.NexusPrimary
+import com.example.nexus.ui.theme.nexusColors
 import com.example.nexus.feature_auth.viewmodel.AuthViewModel
 import com.example.nexus.core.utils.Resource
 import androidx.compose.material3.SnackbarHost
@@ -41,6 +41,7 @@ fun LoginScreen(
 
     val loginState by viewModel.loginState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val nc = MaterialTheme.nexusColors
 
     LaunchedEffect(loginState) {
         when (loginState) {
@@ -67,7 +68,7 @@ fun LoginScreen(
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            DarkBackground,
+                            nc.background,
                             Color(0xFF1A1A2E) // Deep purple/blue
                         )
                     )
@@ -97,13 +98,13 @@ fun LoginScreen(
                     text = "NEXUS",
                     fontSize = 40.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White,
+                    color = nc.textPrimary,
                     letterSpacing = 4.sp,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
                 Text(
                     text = "Kết nối không giới hạn",
-                    color = Color.Gray,
+                    color = nc.textSecondary,
                     modifier = Modifier.padding(bottom = 32.dp)
                 )
 
@@ -111,7 +112,7 @@ fun LoginScreen(
                     value = email,
                     onValueChange = { email = it },
                     label = "Email",
-                    leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = Color.Gray) },
+                    leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = nc.textSecondary) },
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Email),
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
@@ -121,7 +122,7 @@ fun LoginScreen(
                     onValueChange = { password = it },
                     label = "Mật khẩu",
                     isPassword = true,
-                    leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = Color.Gray) },
+                    leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = nc.textSecondary) },
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
 
@@ -146,7 +147,7 @@ fun LoginScreen(
                 Row(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Chưa có tài khoản? ", color = Color.Gray)
+                    Text("Chưa có tài khoản? ", color = nc.textSecondary)
                     Text(
                         text = "Đăng ký ngay",
                         color = NexusPrimary,
@@ -173,6 +174,7 @@ fun RegisterScreen(
 
     val registerState by viewModel.registerState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val nc = MaterialTheme.nexusColors
 
     LaunchedEffect(registerState) {
         when (registerState) {
@@ -199,7 +201,7 @@ fun RegisterScreen(
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            DarkBackground,
+                            nc.background,
                             Color(0xFF1A1A2E)
                         )
                     )
@@ -229,13 +231,13 @@ fun RegisterScreen(
                     text = "TẠO TÀI KHOẢN",
                     fontSize = 28.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White,
+                    color = nc.textPrimary,
                     letterSpacing = 2.sp,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
                 Text(
                     text = "Gia nhập cộng đồng NEXUS",
-                    color = Color.Gray,
+                    color = nc.textSecondary,
                     modifier = Modifier.padding(bottom = 32.dp)
                 )
 
@@ -243,7 +245,7 @@ fun RegisterScreen(
                     value = username,
                     onValueChange = { username = it },
                     label = "Tên hiển thị",
-                    leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = Color.Gray) },
+                    leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = nc.textSecondary) },
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
 
@@ -251,7 +253,7 @@ fun RegisterScreen(
                     value = email,
                     onValueChange = { email = it },
                     label = "Email",
-                    leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = Color.Gray) },
+                    leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = nc.textSecondary) },
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Email),
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
@@ -261,7 +263,7 @@ fun RegisterScreen(
                     onValueChange = { password = it },
                     label = "Mật khẩu",
                     isPassword = true,
-                    leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = Color.Gray) },
+                    leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = nc.textSecondary) },
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
 
@@ -270,7 +272,7 @@ fun RegisterScreen(
                     onValueChange = { confirmPassword = it },
                     label = "Xác nhận mật khẩu",
                     isPassword = true,
-                    leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = Color.Gray) },
+                    leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = nc.textSecondary) },
                     modifier = Modifier.padding(bottom = 32.dp)
                 )
 
@@ -285,7 +287,7 @@ fun RegisterScreen(
                 Row(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Đã có tài khoản? ", color = Color.Gray)
+                    Text("Đã có tài khoản? ", color = nc.textSecondary)
                     Text(
                         text = "Đăng nhập",
                         color = NexusPrimary,
@@ -298,4 +300,3 @@ fun RegisterScreen(
         }  // Đóng Box
     }  // Đóng Scaffold
 }
-

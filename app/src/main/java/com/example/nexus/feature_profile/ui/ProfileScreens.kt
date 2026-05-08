@@ -36,10 +36,12 @@ import com.example.nexus.ui.theme.*
 fun ProfileScreen(
     viewModel: ProfileViewModel? = null,
     onNavigateToEdit: () -> Unit,
+    onNavigateToSettings: () -> Unit = {},
     onLogout: () -> Unit,
     onNavigateToTab: (String) -> Unit = {}
 ) {
     val user by (viewModel?.user?.collectAsState() ?: remember { mutableStateOf(null) })
+    val nc = MaterialTheme.nexusColors
 
     Scaffold(
         bottomBar = {
@@ -48,7 +50,7 @@ fun ProfileScreen(
                 onNavigate = onNavigateToTab
             )
         },
-        containerColor = DarkBackground
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -63,7 +65,7 @@ fun ProfileScreen(
                     .height(180.dp)
                     .background(
                         Brush.verticalGradient(
-                            listOf(Color(0xFF5A55FF).copy(alpha = 0.6f), DarkBackground)
+                            listOf(Color(0xFF5A55FF).copy(alpha = 0.6f), MaterialTheme.colorScheme.background)
                         )
                     ),
                 contentAlignment = Alignment.BottomStart
@@ -87,7 +89,7 @@ fun ProfileScreen(
                     .offset(y = (-24).dp)
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(24.dp))
-                    .background(DarkCard)
+                    .background(MaterialTheme.colorScheme.surface)
                     .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(24.dp))
                     .padding(20.dp)
             ) {
@@ -109,7 +111,7 @@ fun ProfileScreen(
                             ?: 'U'
                         Text(
                             initial.uppercaseChar().toString(),
-                            color = Color.White,
+                            color = nc.textPrimary,
                             fontSize = 28.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -120,14 +122,14 @@ fun ProfileScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             user?.displayName?.ifEmpty { user?.username ?: "" } ?: "...",
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             user?.phone?.ifEmpty { "Chưa cập nhật SĐT" } ?: "...",
-                            color = Color.Gray,
+                            color = nc.textSecondary,
                             fontSize = 13.sp
                         )
                         if (!user?.bio.isNullOrEmpty()) {
@@ -138,7 +140,7 @@ fun ProfileScreen(
 
                     IconButton(
                         onClick = onNavigateToEdit,
-                        modifier = Modifier.background(DarkBackground, CircleShape)
+                        modifier = Modifier.background(MaterialTheme.colorScheme.background, CircleShape)
                     ) {
                         Icon(Icons.Default.Edit, contentDescription = "Sửa hồ sơ", tint = NexusPrimary)
                     }
@@ -150,14 +152,14 @@ fun ProfileScreen(
             // ── Menu section ──
             Text(
                 "TÙY CHỌN",
-                color = Color.Gray,
+                color = nc.textSecondary,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.sp,
                 modifier = Modifier.padding(start = 24.dp, top = 8.dp, bottom = 8.dp)
             )
 
-            ProfileMenuItem(Icons.Outlined.Settings, "Cài đặt & Quyền riêng tư") {}
+            ProfileMenuItem(Icons.Outlined.Settings, "Cài đặt & Quyền riêng tư") { onNavigateToSettings() }
             ProfileMenuItem(Icons.Outlined.HelpOutline, "Trợ giúp & Hỗ trợ") {}
             ProfileMenuItem(Icons.Outlined.Info, "Giới thiệu về NEXUS") {}
 
@@ -197,6 +199,7 @@ fun ProfileScreen(
 
 @Composable
 private fun ProfileMenuItem(icon: ImageVector, title: String, onClick: () -> Unit) {
+    val nc = MaterialTheme.nexusColors
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -204,10 +207,10 @@ private fun ProfileMenuItem(icon: ImageVector, title: String, onClick: () -> Uni
             .padding(horizontal = 24.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(22.dp))
+        Icon(icon, contentDescription = null, tint = nc.iconTintSecondary, modifier = Modifier.size(22.dp))
         Spacer(modifier = Modifier.width(16.dp))
-        Text(title, color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f))
-        Icon(Icons.Default.ArrowForwardIos, contentDescription = null, tint = Color.DarkGray, modifier = Modifier.size(14.dp))
+        Text(title, color = nc.textPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f))
+        Icon(Icons.Default.ArrowForwardIos, contentDescription = null, tint = nc.iconTintSecondary, modifier = Modifier.size(14.dp))
     }
 }
 
@@ -223,6 +226,7 @@ fun EditProfileScreen(
     val user by (viewModel?.user?.collectAsState() ?: remember { mutableStateOf(null) })
     val isLoading by (viewModel?.isLoading?.collectAsState() ?: remember { mutableStateOf(false) })
     val updateSuccess by (viewModel?.updateSuccess?.collectAsState() ?: remember { mutableStateOf(false) })
+    val nc = MaterialTheme.nexusColors
 
     var displayName by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
@@ -248,19 +252,19 @@ fun EditProfileScreen(
                 title = {
                     Text(
                         "Chỉnh sửa hồ sơ",
-                        color = Color.White,
+                        color = nc.textPrimary,
                         fontWeight = FontWeight.Bold
                     )
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = nc.textPrimary)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBackground)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = nc.background)
             )
         },
-        containerColor = DarkBackground
+        containerColor = nc.background
     ) { paddingValues ->
         Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
             Column(
@@ -286,7 +290,7 @@ fun EditProfileScreen(
                 ) {
                     Text(
                         displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "U",
-                        color = Color.White,
+                        color = nc.textPrimary,
                         fontSize = 36.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -298,18 +302,18 @@ fun EditProfileScreen(
                 OutlinedTextField(
                     value = displayName,
                     onValueChange = { displayName = it },
-                    label = { Text("Tên hiển thị", color = Color.Gray) },
+                    label = { Text("Tên hiển thị", color = nc.textSecondary) },
                     leadingIcon = {
                         Icon(Icons.Default.Person, contentDescription = null, tint = NexusPrimary)
                     },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = NexusPrimary,
-                        unfocusedBorderColor = Color.Gray.copy(alpha = 0.3f),
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
+                        unfocusedBorderColor = nc.textSecondary.copy(alpha = 0.3f),
+                        focusedTextColor = nc.textPrimary,
+                        unfocusedTextColor = nc.textPrimary,
                         cursorColor = NexusPrimary,
-                        focusedContainerColor = DarkCard,
-                        unfocusedContainerColor = DarkCard
+                        focusedContainerColor = nc.cardBg,
+                        unfocusedContainerColor = nc.cardBg
                     ),
                     shape = RoundedCornerShape(16.dp),
                     singleLine = true,
@@ -322,18 +326,18 @@ fun EditProfileScreen(
                 OutlinedTextField(
                     value = phone,
                     onValueChange = { phone = it },
-                    label = { Text("Số điện thoại", color = Color.Gray) },
+                    label = { Text("Số điện thoại", color = nc.textSecondary) },
                     leadingIcon = {
                         Icon(Icons.Default.Phone, contentDescription = null, tint = NexusPrimary)
                     },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = NexusPrimary,
-                        unfocusedBorderColor = Color.Gray.copy(alpha = 0.3f),
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
+                        unfocusedBorderColor = nc.textSecondary.copy(alpha = 0.3f),
+                        focusedTextColor = nc.textPrimary,
+                        unfocusedTextColor = nc.textPrimary,
                         cursorColor = NexusPrimary,
-                        focusedContainerColor = DarkCard,
-                        unfocusedContainerColor = DarkCard
+                        focusedContainerColor = nc.cardBg,
+                        unfocusedContainerColor = nc.cardBg
                     ),
                     shape = RoundedCornerShape(16.dp),
                     singleLine = true,
@@ -346,18 +350,18 @@ fun EditProfileScreen(
                 OutlinedTextField(
                     value = bio,
                     onValueChange = { bio = it },
-                    label = { Text("Giới thiệu bản thân", color = Color.Gray) },
+                    label = { Text("Giới thiệu bản thân", color = nc.textSecondary) },
                     leadingIcon = {
                         Icon(Icons.Outlined.Info, contentDescription = null, tint = NexusPrimary)
                     },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = NexusPrimary,
-                        unfocusedBorderColor = Color.Gray.copy(alpha = 0.3f),
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
+                        unfocusedBorderColor = nc.textSecondary.copy(alpha = 0.3f),
+                        focusedTextColor = nc.textPrimary,
+                        unfocusedTextColor = nc.textPrimary,
                         cursorColor = NexusPrimary,
-                        focusedContainerColor = DarkCard,
-                        unfocusedContainerColor = DarkCard
+                        focusedContainerColor = nc.cardBg,
+                        unfocusedContainerColor = nc.cardBg
                     ),
                     shape = RoundedCornerShape(16.dp),
                     minLines = 3,
@@ -373,7 +377,7 @@ fun EditProfileScreen(
                     enabled = !isLoading,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = NexusPrimary,
-                        disabledContainerColor = Color.Gray
+                        disabledContainerColor = nc.textSecondary
                     ),
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier
@@ -381,7 +385,7 @@ fun EditProfileScreen(
                         .height(56.dp)
                 ) {
                     if (isLoading) {
-                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                        CircularProgressIndicator(color = nc.textPrimary, modifier = Modifier.size(24.dp))
                     } else {
                         Text(
                             "LƯU THAY ĐỔI",
