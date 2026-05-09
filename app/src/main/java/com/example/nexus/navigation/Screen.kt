@@ -38,6 +38,9 @@ sealed class Screen(
     data object GroupInfo : Screen("group_info/{groupId}", "Thông tin nhóm") {
         fun createRoute(groupId: String) = "group_info/$groupId"
     }
+    data object ChatInfo : Screen("chat_info/{chatId}", "Thông tin chat") {
+        fun createRoute(chatId: String) = "chat_info/$chatId"
+    }
 
     // ── Contacts ──
     data object SearchUser : Screen("search_user", "Tìm kiếm")

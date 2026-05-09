@@ -3,9 +3,12 @@ package com.example.nexus.feature_chat.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -19,10 +22,15 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
@@ -34,6 +42,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -42,6 +52,8 @@ import androidx.compose.ui.unit.sp
 import com.example.nexus.core.utils.Constants
 import com.example.nexus.core.utils.DateUtils
 import com.example.nexus.core.utils.Resource
+import com.example.nexus.data.model.Chat
+import com.example.nexus.data.model.Message
 import com.example.nexus.feature_chat.viewmodel.ChatViewModel
 import com.example.nexus.navigation.Screen
 import com.example.nexus.ui.components.NexusBottomBar
@@ -49,6 +61,7 @@ import com.example.nexus.ui.theme.GradientEnd
 import com.example.nexus.ui.theme.GradientStart
 import com.example.nexus.ui.theme.NexusPrimary
 import com.example.nexus.ui.theme.nexusColors
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,6 +76,8 @@ fun ChatListScreen(
     val chatsState = viewModel?.chatsState?.collectAsState()?.value ?: Resource.Idle
     val onlineFriendsState = viewModel?.onlineFriends?.collectAsState()?.value ?: emptyList()
     var showAddMenu by remember { mutableStateOf(false) }
+    var pinnedChatIds by remember { mutableStateOf(setOf<String>()) }
+    var showChatMenu by remember { mutableStateOf<Pair<String, String>?>(null) }
     Scaffold(
         floatingActionButton = {
             FloatingActionButton(
@@ -217,8 +232,9 @@ fun ChatListScreen(
                     }
                 }
             } else if (chatsState is Resource.Success && chatsState.data.isNotEmpty()) {
-                items(chatsState.data.size) { index ->
-                    val chat = chatsState.data[index]
+                val sortedChats = chatsState.data.sortedByDescending { it.id in pinnedChatIds }
+                items(sortedChats.size) { index ->
+                    val chat = sortedChats[index]
                     val lastMessageText = chat.lastMessage?.text ?: "Chưa có tin nhắn"
 
                     val timeStr = chat.lastMessage?.timestamp?.toDate()?.let { DateUtils.formatChatTime(it.time) } ?: ""
@@ -237,7 +253,9 @@ fun ChatListScreen(
                         time = timeStr,
                         unreadCount = unreadCount,
                         isOnline = false,
-                        onClick = { onNavigateToConversation(chat.id) }
+                        isPinned = chat.id in pinnedChatIds,
+                        onClick = { onNavigateToConversation(chat.id) },
+                        onLongClick = { showChatMenu = Pair(chat.id, displayName) }
                     )
                 }
             } else if (chatsState is Resource.Success && chatsState.data.isEmpty()) {
@@ -252,6 +270,80 @@ fun ChatListScreen(
                 }
             }
         }
+    }
+
+    showChatMenu?.let { (chatId, chatName) ->
+        val isChatPinned = chatId in pinnedChatIds
+        AlertDialog(
+            onDismissRequest = { showChatMenu = null },
+            containerColor = nc.surfaceElevated,
+            title = { Text(chatName, color = nc.textPrimary, fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                pinnedChatIds = if (isChatPinned) {
+                                    pinnedChatIds - chatId
+                                } else {
+                                    if (pinnedChatIds.size < 3) pinnedChatIds + chatId
+                                    else pinnedChatIds
+                                }
+                                showChatMenu = null
+                            }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.PushPin,
+                            contentDescription = null,
+                            tint = if (isChatPinned) nc.textTertiary else NexusPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            if (isChatPinned) "Bỏ ghim" else "Ghim tin nhắn",
+                            color = nc.textPrimary
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showChatMenu = null
+                            }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Archive, contentDescription = null, tint = nc.iconTint, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Lưu trữ", color = nc.textPrimary)
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showChatMenu = null
+                            }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = null, tint = nc.errorText, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Xóa cuộc trò chuyện", color = nc.errorText)
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showChatMenu = null }) {
+                    Text("Đóng", color = NexusPrimary)
+                }
+            }
+        )
     }
 }
 
@@ -293,6 +385,7 @@ fun OnlineFriendItem(name: String) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ChatItem(
     name: String,
@@ -300,7 +393,9 @@ fun ChatItem(
     time: String,
     unreadCount: Int,
     isOnline: Boolean,
-    onClick: () -> Unit
+    isPinned: Boolean = false,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit = {}
 ) {
     val nc = MaterialTheme.nexusColors
     val isUnread = unreadCount > 0
@@ -325,7 +420,12 @@ fun ChatItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onClick)
+                .combinedClickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onClick,
+                    onLongClick = onLongClick
+                )
                 .padding(horizontal = 20.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -333,6 +433,11 @@ fun ChatItem(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
+                        .then(
+                            if (isUnread) Modifier.border(2.5.dp, nc.unreadBadge, CircleShape)
+                            else Modifier
+                        )
+                        .padding(if (isUnread) 2.dp else 0.dp)
                         .clip(CircleShape)
                         .background(Brush.linearGradient(listOf(NexusPrimary.copy(alpha = 0.4f), nc.cardBg))),
                     contentAlignment = Alignment.Center
@@ -377,6 +482,15 @@ fun ChatItem(
                             fontSize = 12.sp
                         )
                     }
+                    if (isPinned) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            Icons.Default.PushPin,
+                            contentDescription = "Đã ghim",
+                            tint = nc.textTertiary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
                 }
                 
                 Spacer(modifier = Modifier.height(4.dp))
@@ -395,7 +509,7 @@ fun ChatItem(
                         Spacer(modifier = Modifier.width(8.dp))
                         Box(
                             modifier = Modifier
-                                .size(20.dp)
+                                .size(22.dp)
                                 .clip(CircleShape)
                                 .background(nc.unreadBadge),
                             contentAlignment = Alignment.Center
@@ -436,6 +550,24 @@ fun ConversationScreen(
     LaunchedEffect(chatId) {
         viewModel?.loadMessages(chatId)
     }
+
+    LaunchedEffect(chatId) {
+        viewModel?.markMessagesAsSeen(chatId)
+    }
+
+    LaunchedEffect(chatId) {
+        viewModel?.startObservingTyping(chatId)
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            viewModel?.stopObservingTyping()
+        }
+    }
+
+    val isOtherTyping = viewModel?.isTyping?.collectAsState()?.value ?: false
+    var showMessageMenu by remember { mutableStateOf<Pair<String, Message>?>(null) }
+    val clipboardManager = LocalClipboardManager.current
 
     val isGroup = currentChat?.type == Constants.CHAT_TYPE_GROUP
     val displayName = if (isGroup) {
@@ -494,7 +626,9 @@ fun ConversationScreen(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (statusText.isNotEmpty()) {
+                if (isOtherTyping) {
+                    Text("Đang nhập...", color = Color(0xFF22C55E), fontSize = 12.sp)
+                } else if (statusText.isNotEmpty()) {
                     Text(
                         statusText,
                         color = if (!isGroup && otherUser?.status == Constants.USER_STATUS_ONLINE) Color(0xFF22C55E) else nc.textSecondary,
@@ -577,8 +711,11 @@ fun ConversationScreen(
                                 text = msg.text,
                                 isMe = isMe,
                                 time = timeStr,
+                                status = if (isMe) msg.status else "",
                                 showDateSeparator = showDateSeparator,
-                                dateSeparatorText = msg.timestamp?.toDate()?.let { DateUtils.formatDateSeparator(it.time) } ?: ""
+                                dateSeparatorText = msg.timestamp?.toDate()?.let { DateUtils.formatDateSeparator(it.time) } ?: "",
+                                isRecalled = msg.status == "recalled",
+                                onLongClick = { showMessageMenu = Pair(chatId, msg) }
                             )
                         }
                     }
@@ -592,6 +729,62 @@ fun ConversationScreen(
                 }
                 else -> {}
             }
+        }
+
+        // Message action dialog
+        showMessageMenu?.let { (chatIdForMenu, msg) ->
+            AlertDialog(
+                onDismissRequest = { showMessageMenu = null },
+                containerColor = nc.surfaceElevated,
+                title = { Text("Tin nhắn", color = nc.textPrimary) },
+                text = {
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                clipboardManager.setText(AnnotatedString(msg.text))
+                                showMessageMenu = null
+                            }.padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = null, tint = nc.iconTint, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text("Sao chép", color = nc.textPrimary)
+                        }
+
+                        if (msg.senderId == currentUserId) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    viewModel?.recallMessage(chatIdForMenu, msg.id)
+                                    showMessageMenu = null
+                                }.padding(vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Undo, contentDescription = null, tint = NexusPrimary, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text("Thu hồi", color = nc.textPrimary)
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                viewModel?.deleteMessage(chatIdForMenu, msg.id)
+                                showMessageMenu = null
+                            }.padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = null, tint = nc.errorText, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text("Xóa", color = nc.errorText)
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { showMessageMenu = null }) {
+                        Text("Đóng", color = NexusPrimary)
+                    }
+                }
+            )
         }
 
         // ── Input Bar ──
@@ -665,13 +858,17 @@ fun ConversationScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MessageBubble(
     text: String,
     isMe: Boolean,
     time: String,
+    status: String = "",
     showDateSeparator: Boolean = false,
-    dateSeparatorText: String = ""
+    dateSeparatorText: String = "",
+    isRecalled: Boolean = false,
+    onLongClick: (() -> Unit)? = null
 ) {
     val nc = MaterialTheme.nexusColors
     Column(
@@ -717,6 +914,12 @@ fun MessageBubble(
                 Box(
                     modifier = Modifier
                         .widthIn(max = 280.dp)
+                        .combinedClickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {},
+                            onLongClick = onLongClick
+                        )
                         .background(
                             brush = if (isMe) Brush.linearGradient(listOf(Color(0xFF5A55FF), Color(0xFF3B82F6)))
                                     else SolidColor(nc.receivedBubble),
@@ -729,15 +932,36 @@ fun MessageBubble(
                         )
                         .padding(horizontal = 14.dp, vertical = 10.dp)
                 ) {
-                    Text(text = text, color = if (isMe) nc.sentBubbleText else nc.receivedBubbleText, fontSize = 15.sp, lineHeight = 20.sp)
+                    Text(
+                        text = if (isRecalled) "Tin nhắn đã được thu hồi" else text,
+                        color = if (isRecalled) nc.textTertiary else if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
+                        fontSize = 15.sp,
+                        lineHeight = 20.sp,
+                        fontStyle = if (isRecalled) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal
+                    )
                 }
                 Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = time,
-                    color = nc.textTertiary,
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(horizontal = 4.dp)
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = time,
+                        color = nc.textTertiary,
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    )
+                    if (isMe && status.isNotEmpty()) {
+                        Text(
+                            text = when(status) {
+                                "seen" -> "Đã xem"
+                                "delivered" -> "Đã nhận"
+                                "recalled" -> ""
+                                else -> "Đã gửi"
+                            },
+                            color = if (status == "seen") NexusPrimary else nc.textTertiary,
+                            fontSize = 10.sp,
+                            modifier = Modifier.padding(horizontal = 4.dp)
+                        )
+                    }
+                }
             }
 
             if (isMe) {

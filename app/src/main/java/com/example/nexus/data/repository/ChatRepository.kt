@@ -1,5 +1,6 @@
 package com.example.nexus.data.repository
 
+import com.example.nexus.core.utils.Constants
 import com.example.nexus.core.utils.Resource
 import com.example.nexus.data.firebase.AuthService
 import com.example.nexus.data.firebase.FirestoreService
@@ -71,5 +72,38 @@ class ChatRepository @Inject constructor(
 
     suspend fun getChatById(chatId: String): Chat? {
         return firestoreService.getChat(chatId)
+    }
+
+    suspend fun deleteMessage(chatId: String, messageId: String) {
+        firestoreService.deleteMessage(chatId, messageId)
+    }
+
+    suspend fun recallMessage(chatId: String, messageId: String) {
+        firestoreService.recallMessage(chatId, messageId)
+    }
+
+    suspend fun markMessagesAsSeen(chatId: String) {
+        val userId = authService.currentUserId ?: return
+        firestoreService.markMessagesAsSeen(chatId, userId)
+    }
+
+    suspend fun setTypingStatus(chatId: String, isTyping: Boolean) {
+        val userId = authService.currentUserId ?: return
+        firestoreService.updateTypingStatus(chatId, userId, isTyping)
+    }
+
+    suspend fun getSharedContentCounts(chatId: String): Triple<Int, Int, Int> {
+        return try {
+            val images = firestoreService.countMessagesByType(chatId, Constants.MESSAGE_TYPE_IMAGE)
+            val files = firestoreService.countMessagesByType(chatId, Constants.MESSAGE_TYPE_FILE)
+            val links = firestoreService.countLinkMessages(chatId)
+            Triple(images, files, links)
+        } catch (_: Exception) {
+            Triple(0, 0, 0)
+        }
+    }
+
+    suspend fun clearChatMessages(chatId: String) {
+        firestoreService.clearChatMessages(chatId)
     }
 }

@@ -235,6 +235,86 @@ class FirestoreService @Inject constructor(
             .await()
     }
 
+    suspend fun deleteMessage(chatId: String, messageId: String) {
+        firestore.collection(Constants.COLLECTION_CHATS)
+            .document(chatId)
+            .collection(Constants.COLLECTION_MESSAGES)
+            .document(messageId)
+            .delete()
+            .await()
+    }
+
+    suspend fun recallMessage(chatId: String, messageId: String) {
+        firestore.collection(Constants.COLLECTION_CHATS)
+            .document(chatId)
+            .collection(Constants.COLLECTION_MESSAGES)
+            .document(messageId)
+            .update(mapOf(
+                "text" to "Tin nhắn đã được thu hồi",
+                "type" to Constants.MESSAGE_TYPE_SYSTEM,
+                "status" to "recalled"
+            ))
+            .await()
+    }
+
+    suspend fun markMessagesAsSeen(chatId: String, userId: String) {
+        val messages = firestore.collection(Constants.COLLECTION_CHATS)
+            .document(chatId)
+            .collection(Constants.COLLECTION_MESSAGES)
+            .whereNotEqualTo("senderId", userId)
+            .whereEqualTo("status", Constants.MESSAGE_STATUS_SENT)
+            .get()
+            .await()
+
+        val batch = firestore.batch()
+        for (doc in messages.documents) {
+            batch.update(doc.reference, mapOf(
+                "status" to Constants.MESSAGE_STATUS_SEEN,
+                "seenBy" to FieldValue.arrayUnion(userId)
+            ))
+        }
+        batch.commit().await()
+    }
+
+    suspend fun countMessagesByType(chatId: String, type: String): Int {
+        return firestore.collection(Constants.COLLECTION_CHATS)
+            .document(chatId)
+            .collection(Constants.COLLECTION_MESSAGES)
+            .whereEqualTo("type", type)
+            .get()
+            .await()
+            .size()
+    }
+
+    suspend fun countLinkMessages(chatId: String): Int {
+        val allMessages = firestore.collection(Constants.COLLECTION_CHATS)
+            .document(chatId)
+            .collection(Constants.COLLECTION_MESSAGES)
+            .whereEqualTo("type", Constants.MESSAGE_TYPE_TEXT)
+            .get()
+            .await()
+            .toObjects(Message::class.java)
+        return allMessages.count { it.text.contains("http://") || it.text.contains("https://") }
+    }
+
+    suspend fun clearChatMessages(chatId: String) {
+        val messages = firestore.collection(Constants.COLLECTION_CHATS)
+            .document(chatId)
+            .collection(Constants.COLLECTION_MESSAGES)
+            .get()
+            .await()
+        val batch = firestore.batch()
+        for (doc in messages.documents) {
+            batch.delete(doc.reference)
+        }
+        batch.commit().await()
+
+        val updates = mutableMapOf<String, Any>()
+        @Suppress("UNCHECKED_CAST")
+        updates["lastMessage"] = FieldValue.delete()
+        updateChat(chatId, updates)
+    }
+
     // ══════════════════════════════════════════════════════════════
     // FRIEND REQUEST OPERATIONS
     // ══════════════════════════════════════════════════════════════

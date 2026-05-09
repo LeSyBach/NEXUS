@@ -7,6 +7,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -20,6 +21,7 @@ import com.example.nexus.feature_auth.ui.RegisterScreen
 import com.example.nexus.feature_auth.viewmodel.AuthViewModel
 import com.example.nexus.feature_chat.ui.ChatListScreen
 import com.example.nexus.feature_chat.ui.ConversationScreen
+import com.example.nexus.feature_chat.ui.ChatInfoScreen
 import com.example.nexus.feature_chat.ui.CreateGroupScreen
 import com.example.nexus.feature_contact.ui.ContactListScreen
 import com.example.nexus.feature_contact.ui.FriendRequestsScreen
@@ -28,7 +30,7 @@ import com.example.nexus.feature_call.ui.CallHistoryScreen
 import com.example.nexus.feature_profile.ui.ProfileScreen
 import com.example.nexus.feature_profile.ui.EditProfileScreen
 import com.example.nexus.feature_profile.viewmodel.ProfileViewModel
-
+import com.example.nexus.ui.theme.nexusColors
 /**
  * Main navigation graph for NEXUS.
  * Handles authentication flow and main app navigation.
@@ -149,7 +151,7 @@ fun NexusNavGraph(
         }
 
         composable(Screen.Groups.route) {
-            // Placeholder for Groups Tab with BottomBar
+            val nc = MaterialTheme.nexusColors
             androidx.compose.material3.Scaffold(
                 bottomBar = {
                     com.example.nexus.ui.components.NexusBottomBar(
@@ -157,7 +159,7 @@ fun NexusNavGraph(
                         onNavigate = onNavigateToTab
                     )
                 },
-                containerColor = com.example.nexus.ui.theme.DarkBackground
+                containerColor = nc.background
             ) { paddingValues ->
                 androidx.compose.foundation.layout.Box(
                     modifier = androidx.compose.ui.Modifier
@@ -165,7 +167,7 @@ fun NexusNavGraph(
                         .padding(paddingValues),
                     contentAlignment = androidx.compose.ui.Alignment.Center
                 ) {
-                    androidx.compose.material3.Text("Màn hình Nhóm đang phát triển", color = androidx.compose.ui.graphics.Color.White)
+                    androidx.compose.material3.Text("Màn hình Nhóm đang phát triển", color = nc.textPrimary)
                 }
             }
         }
@@ -203,7 +205,7 @@ fun NexusNavGraph(
                 viewModel = chatViewModel,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToGroupInfo = { groupId ->
-                    navController.navigate(Screen.GroupInfo.createRoute(groupId))
+                    navController.navigate(Screen.ChatInfo.createRoute(groupId))
                 }
             )
         }
@@ -220,6 +222,20 @@ fun NexusNavGraph(
         }
 
         // ══════ CONTACTS ══════
+        composable(
+            route = Screen.ChatInfo.route,
+            arguments = listOf(navArgument("chatId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val chatId = backStackEntry.arguments?.getString("chatId") ?: return@composable
+            val chatViewModel: com.example.nexus.feature_chat.viewmodel.ChatViewModel = hiltViewModel()
+            ChatInfoScreen(
+                chatId = chatId,
+                viewModel = chatViewModel,
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToChat = { navController.popBackStack() }
+            )
+        }
+
         composable(Screen.SearchUser.route) {
             val contactViewModel: com.example.nexus.feature_contact.viewmodel.ContactViewModel = hiltViewModel()
             SearchUserScreen(
