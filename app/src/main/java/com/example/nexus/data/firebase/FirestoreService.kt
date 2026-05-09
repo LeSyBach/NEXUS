@@ -1,5 +1,6 @@
 package com.example.nexus.data.firebase
 
+import android.R.id.message
 import com.example.nexus.core.utils.Constants
 import com.example.nexus.data.model.*
 import com.google.firebase.Timestamp
@@ -176,7 +177,20 @@ class FirestoreService @Inject constructor(
             .add(message)
             .await()
 
-        // Update last message in chat
+        // Update the message with its document ID
+        docRef.update("id", docRef.id).await()
+
+        // Build unreadCount: increment for each participant except sender
+        val chat = getChat(chatId)
+        val unreadMap = mutableMapOf<String, Long>()
+        chat?.participants?.forEach { pid ->
+            if (pid != message.senderId) {
+                val current = chat.lastMessage?.unreadCount?.get(pid) ?: 0L
+                unreadMap[pid] = current + 1L
+            }
+        }
+        unreadMap[message.senderId] = 0L
+
         val lastMessage = LastMessage(
             text = when (message.type) {
                 Constants.MESSAGE_TYPE_IMAGE -> "📷 Hình ảnh"
@@ -188,7 +202,8 @@ class FirestoreService @Inject constructor(
             senderId = message.senderId,
             senderName = message.senderName,
             type = message.type,
-            timestamp = Timestamp.now()
+            timestamp = Timestamp.now(),
+            unreadCount = unreadMap
         )
         updateChat(chatId, mapOf("lastMessage" to lastMessage))
 
@@ -258,22 +273,39 @@ class FirestoreService @Inject constructor(
     }
 
     suspend fun markMessagesAsSeen(chatId: String, userId: String) {
-        val messages = firestore.collection(Constants.COLLECTION_CHATS)
+        // Get all messages in the chat, then filter client-side
+        // (avoids compound query that needs Firestore composite index)
+        val allMessages = firestore.collection(Constants.COLLECTION_CHATS)
             .document(chatId)
             .collection(Constants.COLLECTION_MESSAGES)
-            .whereNotEqualTo("senderId", userId)
-            .whereEqualTo("status", Constants.MESSAGE_STATUS_SENT)
             .get()
             .await()
 
         val batch = firestore.batch()
-        for (doc in messages.documents) {
-            batch.update(doc.reference, mapOf(
-                "status" to Constants.MESSAGE_STATUS_SEEN,
-                "seenBy" to FieldValue.arrayUnion(userId)
-            ))
+        var hasUpdates = false
+        for (doc in allMessages.documents) {
+            val senderId = doc.getString("senderId") ?: continue
+            val status = doc.getString("status") ?: continue
+            if (senderId != userId && status == Constants.MESSAGE_STATUS_SENT) {
+                batch.update(doc.reference, mapOf(
+                    "status" to Constants.MESSAGE_STATUS_SEEN,
+                    "seenBy" to FieldValue.arrayUnion(userId)
+                ))
+                hasUpdates = true
+            }
         }
-        batch.commit().await()
+        if (hasUpdates) batch.commit().await()
+
+        // Also reset unread count for this user in lastMessage
+        val chat = getChat(chatId)
+        if (chat?.lastMessage != null) {
+            val updatedUnread = chat.lastMessage.unreadCount.toMutableMap()
+            updatedUnread[userId] = 0L
+            firestore.collection(Constants.COLLECTION_CHATS)
+                .document(chatId)
+                .update("lastMessage.unreadCount", updatedUnread)
+                .await()
+        }
     }
 
     suspend fun countMessagesByType(chatId: String, type: String): Int {

@@ -4,7 +4,9 @@ import com.example.nexus.data.firebase.AuthService
 import com.example.nexus.data.firebase.FirestoreService
 import com.example.nexus.data.model.User
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -27,6 +29,7 @@ class AuthRepository @Inject constructor(
 
     suspend fun login(email: String, password: String) {
         authService.signInWithEmail(email, password)
+        saveFcmToken()
     }
 
     suspend fun register(email: String, password: String, username: String) {
@@ -46,9 +49,18 @@ class AuthRepository @Inject constructor(
             avatarUrl = "" // Empty avatar for now
         )
         firestoreService.createUser(user)
+        saveFcmToken()
     }
 
     fun logout() {
         authService.signOut()
+    }
+
+    private suspend fun saveFcmToken() {
+        try {
+            val userId = authService.currentUserId ?: return
+            val token = FirebaseMessaging.getInstance().token.await()
+            firestoreService.updateUser(userId, mapOf("fcmToken" to token))
+        } catch (_: Exception) {}
     }
 }

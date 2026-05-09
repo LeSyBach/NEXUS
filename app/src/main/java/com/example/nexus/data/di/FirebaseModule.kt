@@ -33,4 +33,10 @@ object FirebaseModule {
     @Provides
     @Singleton
     fun provideFirebaseMessaging(): FirebaseMessaging = FirebaseMessaging.getInstance()
+
+    @Provides
+    @Singleton
+    fun provideFirebaseDatabase(): com.google.firebase.database.FirebaseDatabase {
+        return com.google.firebase.database.FirebaseDatabase.getInstance()
+    }
 }

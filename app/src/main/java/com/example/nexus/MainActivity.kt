@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.core.content.ContextCompat
 import jakarta.inject.Inject
 
@@ -39,7 +40,10 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        
+
+        val navigateTo = intent?.getStringExtra("navigateTo")
+        val chatIdFromNotification = intent?.getStringExtra("chatId")
+
         askNotificationPermission()
 
         setContent {
@@ -53,6 +57,24 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
                     val navController = rememberNavController()
                     val isLoggedIn = FirebaseAuth.getInstance().currentUser != null
+
+                    LaunchedEffect(navigateTo) {
+                        when (navigateTo) {
+                            "conversation" -> {
+                                val cid = chatIdFromNotification
+                                if (!cid.isNullOrEmpty()) {
+                                    navController.navigate(com.example.nexus.navigation.Screen.Conversation.createRoute(cid))
+                                }
+                            }
+                            "incoming_call" -> {
+                                val callId = intent?.getStringExtra("callId")
+                                if (!callId.isNullOrEmpty()) {
+                                    navController.navigate(com.example.nexus.navigation.Screen.IncomingCall.createRoute(callId))
+                                }
+                            }
+                        }
+                    }
+
                     NexusNavGraph(navController = navController, isLoggedIn = isLoggedIn)
                 }
             }

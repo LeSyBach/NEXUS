@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -27,6 +28,9 @@ import com.example.nexus.feature_contact.ui.ContactListScreen
 import com.example.nexus.feature_contact.ui.FriendRequestsScreen
 import com.example.nexus.feature_contact.ui.SearchUserScreen
 import com.example.nexus.feature_call.ui.CallHistoryScreen
+import com.example.nexus.feature_call.ui.OngoingCallScreen
+import com.example.nexus.feature_call.ui.IncomingCallScreen
+import com.example.nexus.feature_call.viewmodel.CallViewModel
 import com.example.nexus.feature_profile.ui.ProfileScreen
 import com.example.nexus.feature_profile.ui.EditProfileScreen
 import com.example.nexus.feature_profile.viewmodel.ProfileViewModel
@@ -206,6 +210,14 @@ fun NexusNavGraph(
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToGroupInfo = { groupId ->
                     navController.navigate(Screen.ChatInfo.createRoute(groupId))
+                },
+                onStartCall = { receiverId, callType ->
+                    navController.navigate(Screen.OngoingCall.createRoute(
+                        callId = java.util.UUID.randomUUID().toString(),
+                        callType = callType,
+                        receiverId = receiverId,
+                        receiverName = ""
+                    ))
                 }
             )
         }
@@ -232,7 +244,15 @@ fun NexusNavGraph(
                 chatId = chatId,
                 viewModel = chatViewModel,
                 onNavigateBack = { navController.popBackStack() },
-                onNavigateToChat = { navController.popBackStack() }
+                onNavigateToChat = { navController.popBackStack() },
+                onStartCall = { receiverId, callType ->
+                    navController.navigate(Screen.OngoingCall.createRoute(
+                        callId = java.util.UUID.randomUUID().toString(),
+                        callType = callType,
+                        receiverId = receiverId,
+                        receiverName = ""
+                    ))
+                }
             )
         }
 
@@ -254,6 +274,57 @@ fun NexusNavGraph(
             FriendRequestsScreen(
                 viewModel = contactViewModel,
                 onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        // ══════ CALL ══════
+        composable(
+            route = Screen.OngoingCall.route,
+            arguments = listOf(
+                navArgument("callId") { type = NavType.StringType },
+                navArgument("callType") { type = NavType.StringType; defaultValue = "voice" },
+                navArgument("receiverId") { type = NavType.StringType; defaultValue = "" },
+                navArgument("receiverName") { type = NavType.StringType; defaultValue = "" }
+            )
+        ) { backStackEntry ->
+            val callId = backStackEntry.arguments?.getString("callId") ?: return@composable
+            val callType = backStackEntry.arguments?.getString("callType") ?: "voice"
+            val receiverId = backStackEntry.arguments?.getString("receiverId") ?: ""
+            val receiverName = backStackEntry.arguments?.getString("receiverName") ?: ""
+            val callViewModel: CallViewModel = hiltViewModel()
+
+            LaunchedEffect(Unit) {
+                if (receiverId.isNotEmpty()) {
+                    callViewModel.startCall(receiverId, receiverName, callType)
+                }
+            }
+
+            OngoingCallScreen(
+                callId = callId,
+                callType = callType,
+                viewModel = callViewModel,
+                onNavigateBack = {
+                    callViewModel.endCall()
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(
+            route = Screen.IncomingCall.route,
+            arguments = listOf(navArgument("callId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val callId = backStackEntry.arguments?.getString("callId") ?: return@composable
+            val callViewModel: CallViewModel = hiltViewModel()
+            IncomingCallScreen(
+                callId = callId,
+                viewModel = callViewModel,
+                onNavigateBack = { navController.popBackStack() },
+                onCallAccepted = {
+                    navController.navigate(Screen.OngoingCall.createRoute(callId, "voice")) {
+                        popUpTo(Screen.IncomingCall.route) { inclusive = true }
+                    }
+                }
             )
         }
 

@@ -25,11 +25,14 @@ import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.GroupAdd
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.outlined.AddCircleOutline
@@ -245,7 +248,7 @@ fun ChatListScreen(
                     }
 
                     val myId = viewModel?.currentUserId
-                    val unreadCount = if (myId != null) chat.lastMessage?.unreadCount?.get(myId) ?: 0 else 0
+                    val unreadCount = if (myId != null) (chat.lastMessage?.unreadCount?.get(myId) ?: 0L).toInt() else 0
 
                     ChatItem(
                         name = displayName,
@@ -359,8 +362,8 @@ fun OnlineFriendItem(name: String) {
                     .fillMaxSize()
                     .padding(2.dp)
                     .border(
-                        width = 2.5.dp, 
-                        brush = Brush.linearGradient(listOf(Color(0xFFBB86FC), Color(0xFF00E5FF))), 
+                        width = 2.5.dp,
+                        brush = Brush.linearGradient(listOf(Color(0xFFBB86FC), Color(0xFF00E5FF))),
                         shape = CircleShape
                     )
                     .padding(4.dp)
@@ -368,7 +371,8 @@ fun OnlineFriendItem(name: String) {
                     .background(nc.avatarBg),
                 contentAlignment = Alignment.Center
             ) {
-                Text(name.first().toString(), color = nc.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                val initial = name.firstOrNull()?.toString() ?: "?"
+                Text(initial, color = nc.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             }
             
             Box(
@@ -399,6 +403,13 @@ fun ChatItem(
 ) {
     val nc = MaterialTheme.nexusColors
     val isUnread = unreadCount > 0
+    val previewText = if (isUnread) {
+        val capped = if (unreadCount > 9) "9+" else unreadCount.toString()
+        "$capped tin nhắn mới"
+    } else {
+        lastMessage
+    }
+    val previewWithTime = if (time.isNotEmpty()) "$previewText · $time" else previewText
 
     Box(
         modifier = Modifier
@@ -442,7 +453,8 @@ fun ChatItem(
                         .background(Brush.linearGradient(listOf(NexusPrimary.copy(alpha = 0.4f), nc.cardBg))),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = name.first().toString(), color = nc.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    val initial = name.firstOrNull()?.toString() ?: "?"
+                    Text(text = initial, color = nc.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 }
                 
                 if (isOnline) {
@@ -474,14 +486,6 @@ fun ChatItem(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
-                    if (time.isNotEmpty()) {
-                        Text(
-                            text = time,
-                            color = if (isUnread) nc.unreadTimeText else nc.textSecondary,
-                            fontWeight = if (isUnread) FontWeight.SemiBold else FontWeight.Normal,
-                            fontSize = 12.sp
-                        )
-                    }
                     if (isPinned) {
                         Spacer(modifier = Modifier.width(4.dp))
                         Icon(
@@ -497,7 +501,7 @@ fun ChatItem(
                 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = lastMessage,
+                        text = previewWithTime,
                         color = if (isUnread) nc.unreadMessageText else nc.textSecondary,
                         fontSize = 13.sp,
                         maxLines = 1,
@@ -509,18 +513,10 @@ fun ChatItem(
                         Spacer(modifier = Modifier.width(8.dp))
                         Box(
                             modifier = Modifier
-                                .size(22.dp)
+                                .size(10.dp)
                                 .clip(CircleShape)
-                                .background(nc.unreadBadge),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = if (unreadCount > 99) "99+" else unreadCount.toString(),
-                                color = nc.unreadBadgeText,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
+                                .background(nc.unreadBadge)
+                        )
                     }
                 }
             }
@@ -537,7 +533,8 @@ fun ConversationScreen(
     chatId: String,
     viewModel: ChatViewModel? = null,
     onNavigateBack: () -> Unit,
-    onNavigateToGroupInfo: (String) -> Unit
+    onNavigateToGroupInfo: (String) -> Unit,
+    onStartCall: (String, String) -> Unit = { _, _ -> }
 ) {
     val nc = MaterialTheme.nexusColors
     var messageText by remember { mutableStateOf("") }
@@ -551,7 +548,9 @@ fun ConversationScreen(
         viewModel?.loadMessages(chatId)
     }
 
+    // Mark as seen once when entering the chat (not on every message update to avoid infinite loop)
     LaunchedEffect(chatId) {
+        kotlinx.coroutines.delay(1000) // Wait for messages to load first
         viewModel?.markMessagesAsSeen(chatId)
     }
 
@@ -637,10 +636,16 @@ fun ConversationScreen(
                 }
             }
 
-            IconButton(onClick = { }) {
+            IconButton(onClick = {
+                val otherId = otherUser?.uid ?: ""
+                if (otherId.isNotEmpty()) onStartCall(otherId, "voice")
+            }) {
                 Icon(Icons.Default.Call, contentDescription = "Call", tint = NexusPrimary, modifier = Modifier.size(22.dp))
             }
-            IconButton(onClick = { }) {
+            IconButton(onClick = {
+                val otherId = otherUser?.uid ?: ""
+                if (otherId.isNotEmpty()) onStartCall(otherId, "video")
+            }) {
                 Icon(Icons.Default.Videocam, contentDescription = "Video", tint = NexusPrimary, modifier = Modifier.size(22.dp))
             }
         }
@@ -707,11 +712,14 @@ fun ConversationScreen(
                                 true
                             } else false
 
+                            // Only show status on the newest message, and only if I sent it
+                            val showStatus = isMe && index == 0 && msg.status != "recalled"
+
                             MessageBubble(
                                 text = msg.text,
                                 isMe = isMe,
                                 time = timeStr,
-                                status = if (isMe) msg.status else "",
+                                status = if (showStatus) msg.status else "",
                                 showDateSeparator = showDateSeparator,
                                 dateSeparatorText = msg.timestamp?.toDate()?.let { DateUtils.formatDateSeparator(it.time) } ?: "",
                                 isRecalled = msg.status == "recalled",
@@ -795,7 +803,7 @@ fun ConversationScreen(
                 .fillMaxWidth()
                 .background(nc.background)
                 .padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.Bottom
+            verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
                 onClick = { },
@@ -809,48 +817,68 @@ fun ConversationScreen(
             ) {
                 Icon(Icons.Default.CameraAlt, contentDescription = "Camera", tint = NexusPrimary, modifier = Modifier.size(22.dp))
             }
+            IconButton(
+                onClick = { },
+                modifier = Modifier.size(44.dp)
+            ) {
+                Icon(Icons.Default.Image, contentDescription = "Gallery", tint = NexusPrimary, modifier = Modifier.size(22.dp))
+            }
+            IconButton(
+                onClick = { },
+                modifier = Modifier.size(44.dp)
+            ) {
+                Icon(Icons.Default.Mic, contentDescription = "Mic", tint = NexusPrimary, modifier = Modifier.size(24.dp))
+            }
 
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .background(nc.cardBg, RoundedCornerShape(24.dp))
-                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                    .height(44.dp)
+                    .background(nc.cardBg, RoundedCornerShape(22.dp))
+                    .padding(horizontal = 14.dp),
+                contentAlignment = Alignment.CenterStart
             ) {
-                if (messageText.isEmpty()) {
-                    Text("Nhắn tin...", color = nc.textSecondary, fontSize = 15.sp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        if (messageText.isEmpty()) {
+                            Text("Aa", color = nc.textSecondary, fontSize = 15.sp)
+                        }
+                        BasicTextField(
+                            value = messageText,
+                            onValueChange = { messageText = it },
+                            textStyle = TextStyle(color = nc.textPrimary, fontSize = 15.sp),
+                            cursorBrush = SolidColor(NexusPrimary),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    IconButton(
+                        onClick = { },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(Icons.Default.EmojiEmotions, contentDescription = "Emoji", tint = NexusPrimary, modifier = Modifier.size(20.dp))
+                    }
                 }
-                BasicTextField(
-                    value = messageText,
-                    onValueChange = { messageText = it },
-                    textStyle = TextStyle(color = nc.textPrimary, fontSize = 15.sp),
-                    cursorBrush = SolidColor(NexusPrimary),
-                    modifier = Modifier.fillMaxWidth()
-                )
             }
 
-            Spacer(modifier = Modifier.width(4.dp))
-
-            AnimatedVisibility(visible = messageText.isNotEmpty(), enter = fadeIn(), exit = fadeOut()) {
-                IconButton(
-                    onClick = {
+            IconButton(
+                onClick = {
+                    if (messageText.isNotEmpty()) {
                         viewModel?.sendMessage(chatId, messageText)
                         messageText = ""
-                    },
-                    modifier = Modifier
-                        .size(44.dp)
-                        .background(NexusPrimary, CircleShape)
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = nc.sentBubbleText, modifier = Modifier.size(20.dp))
-                }
-            }
-
-            AnimatedVisibility(visible = messageText.isEmpty(), enter = fadeIn(), exit = fadeOut()) {
-                IconButton(
-                    onClick = { },
-                    modifier = Modifier.size(44.dp)
-                ) {
-                    Icon(Icons.Default.Mic, contentDescription = "Mic", tint = NexusPrimary, modifier = Modifier.size(24.dp))
-                }
+                    }
+                },
+                modifier = Modifier.size(44.dp)
+            ) {
+                val isSendEnabled = messageText.isNotEmpty()
+                Icon(
+                    if (isSendEnabled) Icons.AutoMirrored.Filled.Send else Icons.Default.ThumbUp,
+                    contentDescription = if (isSendEnabled) "Send" else "Like",
+                    tint = NexusPrimary,
+                    modifier = Modifier.size(24.dp)
+                )
             }
         }
 

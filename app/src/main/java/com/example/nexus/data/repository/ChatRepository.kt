@@ -4,6 +4,7 @@ import com.example.nexus.core.utils.Constants
 import com.example.nexus.core.utils.Resource
 import com.example.nexus.data.firebase.AuthService
 import com.example.nexus.data.firebase.FirestoreService
+import com.example.nexus.data.firebase.NotificationService
 import com.example.nexus.data.model.Chat
 import com.example.nexus.data.model.Message
 import com.example.nexus.data.model.User
@@ -17,7 +18,8 @@ import javax.inject.Singleton
 @Singleton
 class ChatRepository @Inject constructor(
     private val firestoreService: FirestoreService,
-    private val authService: AuthService
+    private val authService: AuthService,
+    private val notificationService: NotificationService
 ) {
 
     fun getCurrentUserId(): String? {
@@ -64,6 +66,21 @@ class ChatRepository @Inject constructor(
                 type = "text"
             )
             firestoreService.sendMessage(chatId, message)
+
+            val chat = firestoreService.getChat(chatId)
+            if (chat != null) {
+                val otherParticipants = chat.participants.filter { it != userId }
+                for (receiverId in otherParticipants) {
+                    notificationService.sendMessageNotification(
+                        receiverId = receiverId,
+                        senderName = currentUser?.displayName?.ifEmpty { currentUser.username } ?: "User",
+                        messageText = text,
+                        chatId = chatId,
+                        senderId = userId
+                    )
+                }
+            }
+
             Resource.Success(Unit)
         } catch (e: Exception) {
             Resource.Error(e.message ?: "Failed to send message")

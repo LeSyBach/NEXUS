@@ -1,5 +1,6 @@
 package com.example.nexus.navigation
 
+import android.net.Uri
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Chat
@@ -32,14 +33,14 @@ sealed class Screen(
 
     // ── Chat ──
     data object Conversation : Screen("conversation/{chatId}", "Chat") {
-        fun createRoute(chatId: String) = "conversation/$chatId"
+        fun createRoute(chatId: String) = "conversation/${Uri.encode(chatId)}"
     }
     data object CreateGroup : Screen("create_group", "Tạo nhóm")
     data object GroupInfo : Screen("group_info/{groupId}", "Thông tin nhóm") {
         fun createRoute(groupId: String) = "group_info/$groupId"
     }
     data object ChatInfo : Screen("chat_info/{chatId}", "Thông tin chat") {
-        fun createRoute(chatId: String) = "chat_info/$chatId"
+        fun createRoute(chatId: String) = "chat_info/${Uri.encode(chatId)}"
     }
 
     // ── Contacts ──
@@ -51,8 +52,9 @@ sealed class Screen(
     data object Settings : Screen("settings", "Cài đặt")
 
     // ── Call ──
-    data object OngoingCall : Screen("ongoing_call/{callId}", "Cuộc gọi") {
-        fun createRoute(callId: String) = "ongoing_call/$callId"
+    data object OngoingCall : Screen("ongoing_call/{callId}/{callType}?receiverId={receiverId}&receiverName={receiverName}", "Cuộc gọi") {
+        fun createRoute(callId: String, callType: String = "voice", receiverId: String = "", receiverName: String = "") =
+            "ongoing_call/$callId/$callType?receiverId=$receiverId&receiverName=$receiverName"
     }
     data object IncomingCall : Screen("incoming_call/{callId}", "Cuộc gọi đến") {
         fun createRoute(callId: String) = "incoming_call/$callId"

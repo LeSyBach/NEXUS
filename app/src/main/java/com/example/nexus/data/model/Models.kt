@@ -57,7 +57,7 @@ data class LastMessage(
     val senderName: String = "",
     val type: String = "text",
     val timestamp: Timestamp? = null,
-    val unreadCount: Map<String, Int> = emptyMap(),
+    val unreadCount: Map<String, Long> = emptyMap(),
 )
 
 /**
@@ -65,7 +65,6 @@ data class LastMessage(
  * Maps to Firestore `chats/{chatId}/messages` subcollection.
  */
 data class Message(
-    @DocumentId
     val id: String = "",
     val chatId: String = "",
     val senderId: String = "",

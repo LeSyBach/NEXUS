@@ -1,11 +1,22 @@
 package com.example.nexus
 
 import android.app.Application
+import android.util.Log
+import com.google.firebase.FirebaseApp
+import com.google.firebase.messaging.FirebaseMessaging
 import dagger.hilt.android.HiltAndroidApp
 
-/**
- * NEXUS Application class.
- * Annotated with @HiltAndroidApp to trigger Hilt's code generation.
- */
 @HiltAndroidApp
-class NexusApplication : Application()
+class NexusApplication : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        FirebaseApp.initializeApp(this)
+
+        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+            if (task.isSuccessful) {
+                val token = task.result
+                Log.d("NexusApp", "FCM Token: $token")
+            }
+        }
+    }
+}
