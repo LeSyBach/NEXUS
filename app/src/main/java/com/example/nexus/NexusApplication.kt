@@ -8,6 +8,7 @@ import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.os.Build
 import android.util.Log
+import androidx.core.content.ContextCompat
 import com.google.firebase.FirebaseApp
 import com.google.firebase.messaging.FirebaseMessaging
 import dagger.hilt.android.HiltAndroidApp
@@ -51,7 +52,7 @@ class NexusApplication : Application() {
             ).apply {
                 description = "Thông báo khi có tin nhắn mới"
                 enableLights(true)
-                lightColor = android.graphics.Color.parseColor("#00E5FF")
+                lightColor = ContextCompat.getColor(this@NexusApplication, R.color.nexus_accent)
                 enableVibration(true)
                 vibrationPattern = longArrayOf(0, 250, 250, 250)
                 setSound(notifSound, notifAudioAttr)

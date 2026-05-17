@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- NEXUS Brand Colors -->
+    <color name="nexus_primary">#FF5A55FF</color>
+    <color name="nexus_accent">#FF00E5FF</color>
+    <color name="nexus_bg">#FF1A1A2E</color>
+    <color name="nexus_notif_bg">#FF0D0D1A</color>
+    <color name="nexus_surface">#FF16213E</color>
+
+    <!-- Legacy (Android template defaults) -->
     <color name="purple_200">#FFBB86FC</color>
     <color name="purple_500">#FF6200EE</color>
     <color name="purple_700">#FF3700B3</color>
