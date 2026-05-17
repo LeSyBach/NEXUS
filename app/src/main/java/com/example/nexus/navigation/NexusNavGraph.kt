@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -29,7 +27,6 @@ import com.example.nexus.feature_chat.ui.CreateGroupScreen
 import com.example.nexus.feature_contact.ui.ContactListScreen
 import com.example.nexus.feature_contact.ui.FriendRequestsScreen
 import com.example.nexus.feature_contact.ui.SearchUserScreen
-import com.example.nexus.feature_call.ui.CallHistoryScreen
 import com.example.nexus.feature_call.ui.OngoingCallScreen
 import com.example.nexus.feature_call.ui.IncomingCallScreen
 import com.example.nexus.feature_call.viewmodel.CallViewModel
@@ -47,27 +44,6 @@ fun NexusNavGraph(
     isLoggedIn: Boolean,
 ) {
     val startDestination = if (isLoggedIn) Screen.ChatList.route else Screen.Login.route
-    val callViewModel: CallViewModel = hiltViewModel()
-    val callState by callViewModel.callState.collectAsState()
-    val currentSignal by callViewModel.currentSignal.collectAsState()
-
-    LaunchedEffect(isLoggedIn) {
-        if (isLoggedIn) {
-            callViewModel.currentUserId?.let { userId ->
-                callViewModel.observeIncomingCalls(userId)
-            }
-        }
-    }
-
-    LaunchedEffect(callState, currentSignal?.callId) {
-        val callId = currentSignal?.callId ?: return@LaunchedEffect
-        if (callState == com.example.nexus.feature_call.viewmodel.CallState.INCOMING) {
-            val currentRoute = navController.currentBackStackEntry?.destination?.route
-            if (currentRoute != Screen.IncomingCall.route) {
-                navController.navigate(Screen.IncomingCall.createRoute(callId))
-            }
-        }
-    }
 
     NavHost(
         navController = navController,
