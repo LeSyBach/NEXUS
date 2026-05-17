@@ -4,6 +4,7 @@ import com.example.nexus.core.utils.Constants
 import com.example.nexus.core.utils.Resource
 import com.example.nexus.data.firebase.AuthService
 import com.example.nexus.data.firebase.FirestoreService
+import com.example.nexus.data.firebase.NotificationService
 import com.example.nexus.data.model.Chat
 import com.example.nexus.data.model.FriendRequest
 import com.example.nexus.data.model.User
@@ -17,7 +18,8 @@ import javax.inject.Singleton
 @Singleton
 class ContactRepository @Inject constructor(
     private val firestoreService: FirestoreService,
-    private val authService: AuthService
+    private val authService: AuthService,
+    private val notificationService: NotificationService
 ) {
 
     fun getCurrentUserId(): String? = authService.currentUserId
@@ -68,7 +70,17 @@ class ContactRepository @Inject constructor(
                 status       = Constants.FRIEND_REQUEST_PENDING,
                 timestamp    = Timestamp.now()
             )
-            firestoreService.sendFriendRequest(request)
+            val requestId = firestoreService.sendFriendRequest(request)
+
+            // Gửi push notification cho người nhận
+            val displayName = fromUser?.displayName?.ifEmpty { fromUser.username } ?: fromUser?.username ?: "User"
+            notificationService.sendFriendRequestNotification(
+                receiverId = toUserId,
+                senderName = displayName,
+                senderId = fromUserId,
+                requestId = requestId
+            )
+
             Resource.Success(Unit)
         } catch (e: Exception) {
             Resource.Error(e.message ?: "Lỗi khi gửi lời mời")

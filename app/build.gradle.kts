@@ -1,3 +1,34 @@
+import java.util.Properties
+
+// Task ghi private key vào assets (tránh BuildConfig string escaping issues)
+val writeFcmKey by tasks.registering {
+    val localPropsFile = rootProject.file("local.properties")
+    val assetsDir = file("src/main/assets")
+    val outputFile = assetsDir.resolve("fcm_sa_key.txt")
+
+    inputs.file(localPropsFile)
+    outputs.file(outputFile)
+
+    doLast {
+        val props = Properties()
+        if (localPropsFile.exists()) {
+            props.load(localPropsFile.inputStream())
+        }
+        val rawKey = props.getProperty("FCM_SA_PRIVATE_KEY", "")
+        val cleanKey = rawKey
+            .replace("\\n", "")
+            .replace("\n", "")
+            .replace("\r", "")
+            .replace("-----BEGIN PRIVATE KEY-----", "")
+            .replace("-----END PRIVATE KEY-----", "")
+            .replace(" ", "")
+            .replace("\t", "")
+
+        assetsDir.mkdirs()
+        outputFile.writeText(cleanKey)
+    }
+}
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -19,6 +50,16 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Đọc Service Account credentials từ local.properties (không commit lên git)
+        val localProps = Properties()
+        val localPropsFile = rootProject.file("local.properties")
+        if (localPropsFile.exists()) {
+            localProps.load(localPropsFile.inputStream())
+        }
+        buildConfigField("String", "FCM_SA_PROJECT_ID", "\"${localProps.getProperty("FCM_SA_PROJECT_ID", "")}\"")
+        buildConfigField("String", "FCM_SA_CLIENT_EMAIL", "\"${localProps.getProperty("FCM_SA_CLIENT_EMAIL", "")}\"")
+        buildConfigField("String", "FCM_SA_PRIVATE_KEY_ID", "\"${localProps.getProperty("FCM_SA_PRIVATE_KEY_ID", "")}\"")
     }
 
     buildTypes {
@@ -39,6 +80,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -75,6 +117,9 @@ dependencies {
     implementation(libs.firebase.messaging)
     implementation(libs.firebase.database)
 
+    // WebRTC
+    implementation("io.github.webrtc-sdk:android:144.7559.05")
+
     // Google Sign-In / Credentials
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services.auth)
@@ -91,6 +136,9 @@ dependencies {
     // Coroutines Tasks
     implementation(libs.kotlinx.coroutines.play.services)
 
+    // OkHttp (dùng cho FCM direct send)
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
@@ -99,4 +147,11 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+}
+
+// Chạy writeFcmKey trước khi merge assets
+tasks.configureEach {
+    if (name.startsWith("merge") && name.contains("Assets")) {
+        dependsOn(writeFcmKey)
+    }
 }

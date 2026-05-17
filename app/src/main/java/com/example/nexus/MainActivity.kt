@@ -1,5 +1,6 @@
 package com.example.nexus
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -17,11 +18,11 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.core.content.ContextCompat
 import jakarta.inject.Inject
 
@@ -36,20 +37,21 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var themeManager: com.example.nexus.core.utils.ThemeManager
 
+    // State để trigger recompose khi intent mới đến (app đang mở)
+    private val pendingIntentState = mutableStateOf<Intent?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val navigateTo = intent?.getStringExtra("navigateTo")
-        val chatIdFromNotification = intent?.getStringExtra("chatId")
-
         askNotificationPermission()
+        pendingIntentState.value = intent
 
         setContent {
             val isDarkMode by themeManager.isDarkModeFlow.collectAsState(initial = null)
             val useSystemTheme by themeManager.useSystemThemeFlow.collectAsState(initial = true)
-            
+
             val isSystemDark = androidx.compose.foundation.isSystemInDarkTheme()
             val darkTheme = if (useSystemTheme) isSystemDark else (isDarkMode ?: isSystemDark)
 
@@ -58,18 +60,32 @@ class MainActivity : ComponentActivity() {
                     val navController = rememberNavController()
                     val isLoggedIn = FirebaseAuth.getInstance().currentUser != null
 
-                    LaunchedEffect(navigateTo) {
+                    // Observe pending intent (từ notification khi app đang mở hoặc khởi động)
+                    val currentIntent by pendingIntentState
+                    LaunchedEffect(currentIntent) {
+                        val activeIntent = currentIntent ?: return@LaunchedEffect
+                        val navigateTo = activeIntent.getStringExtra("navigateTo")
                         when (navigateTo) {
                             "conversation" -> {
-                                val cid = chatIdFromNotification
+                                val cid = activeIntent.getStringExtra("chatId")
                                 if (!cid.isNullOrEmpty()) {
-                                    navController.navigate(com.example.nexus.navigation.Screen.Conversation.createRoute(cid))
+                                    navController.navigate(
+                                        com.example.nexus.navigation.Screen.Conversation.createRoute(cid)
+                                    )
                                 }
                             }
                             "incoming_call" -> {
-                                val callId = intent?.getStringExtra("callId")
+                                val callId = activeIntent.getStringExtra("callId")
                                 if (!callId.isNullOrEmpty()) {
-                                    navController.navigate(com.example.nexus.navigation.Screen.IncomingCall.createRoute(callId))
+                                    navController.navigate(
+                                        com.example.nexus.navigation.Screen.IncomingCall.createRoute(callId)
+                                    )
+                                }
+                            }
+                            "friend_requests" -> {
+                                // Điều hướng đến màn hình lời mời kết bạn
+                                navController.navigate(com.example.nexus.navigation.Screen.FriendRequests.route) {
+                                    launchSingleTop = true
                                 }
                             }
                         }
@@ -79,6 +95,16 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /**
+     * Gọi khi app đang chạy và user bấm vào notification.
+     * Cập nhật pendingIntentState để LaunchedEffect trong Compose xử lý navigation.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        pendingIntentState.value = intent
     }
 
     private fun askNotificationPermission() {

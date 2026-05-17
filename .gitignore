@@ -13,3 +13,6 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# FCM service account key (generated from local.properties)
+app/src/main/assets/fcm_sa_key.txt

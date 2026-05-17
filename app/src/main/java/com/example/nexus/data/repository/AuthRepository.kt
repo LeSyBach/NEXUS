@@ -3,6 +3,7 @@ package com.example.nexus.data.repository
 import com.example.nexus.data.firebase.AuthService
 import com.example.nexus.data.firebase.FirestoreService
 import com.example.nexus.data.model.User
+import android.util.Log
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.flow.Flow
@@ -56,11 +57,18 @@ class AuthRepository @Inject constructor(
         authService.signOut()
     }
 
-    private suspend fun saveFcmToken() {
+    /**
+     * Lấy FCM token hiện tại và lưu vào Firestore cho user đang đăng nhập.
+     * Gọi sau mỗi lần đăng nhập để đảm bảo token luôn mới nhất.
+     */
+    suspend fun saveFcmToken() {
         try {
             val userId = authService.currentUserId ?: return
             val token = FirebaseMessaging.getInstance().token.await()
             firestoreService.updateUser(userId, mapOf("fcmToken" to token))
-        } catch (_: Exception) {}
+            Log.d("AuthRepository", "FCM token saved for user $userId")
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Failed to save FCM token", e)
+        }
     }
 }

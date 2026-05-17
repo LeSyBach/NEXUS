@@ -1,5 +1,7 @@
 package com.example.nexus.data.di
 
+import android.content.Context
+import com.example.nexus.data.firebase.FcmV1Sender
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.messaging.FirebaseMessaging
@@ -7,13 +9,10 @@ import com.google.firebase.storage.FirebaseStorage
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
-/**
- * Hilt module providing Firebase service instances.
- * All Firebase services are singleton-scoped.
- */
 @Module
 @InstallIn(SingletonComponent::class)
 object FirebaseModule {
@@ -38,5 +37,11 @@ object FirebaseModule {
     @Singleton
     fun provideFirebaseDatabase(): com.google.firebase.database.FirebaseDatabase {
         return com.google.firebase.database.FirebaseDatabase.getInstance()
+    }
+
+    @Provides
+    @Singleton
+    fun provideFcmV1Sender(@ApplicationContext context: Context): FcmV1Sender {
+        return FcmV1Sender(context)
     }
 }

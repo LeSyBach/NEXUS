@@ -64,6 +64,7 @@ import com.example.nexus.ui.theme.GradientEnd
 import com.example.nexus.ui.theme.GradientStart
 import com.example.nexus.ui.theme.NexusPrimary
 import com.example.nexus.ui.theme.nexusColors
+import com.example.nexus.data.firebase.NexusMessagingService
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -558,6 +559,17 @@ fun ConversationScreen(
         viewModel?.startObservingTyping(chatId)
     }
 
+    // Suppress push notification khi đang xem cuộc trò chuyện này
+    DisposableEffect(chatId) {
+        NexusMessagingService.activeChatId = chatId
+        onDispose {
+            // Chỉ clear nếu vẫn đang là chat này (không clear nếu đã navigate sang chat khác)
+            if (NexusMessagingService.activeChatId == chatId) {
+                NexusMessagingService.activeChatId = null
+            }
+        }
+    }
+
     DisposableEffect(Unit) {
         onDispose {
             viewModel?.stopObservingTyping()
@@ -701,6 +713,18 @@ fun ConversationScreen(
                             val msg = messagesState.data[index]
                             val isMe = msg.senderId == currentUserId
                             val timeStr = msg.timestamp?.toDate()?.let { DateUtils.formatMessageTime(it.time) } ?: ""
+                            val senderInitial = if (isMe) {
+                                ""
+                            } else {
+                                val baseName = msg.senderName.ifEmpty { displayName }
+                                baseName.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
+                            }
+                            val isLastFromSender = if (!isMe) {
+                                val nextMsg = messagesState.data.getOrNull(index + 1)
+                                nextMsg == null || nextMsg.senderId != msg.senderId
+                            } else {
+                                false
+                            }
 
                             val showDateSeparator = if (index < messagesState.data.size - 1) {
                                 val currDate = msg.timestamp?.toDate()
@@ -723,6 +747,8 @@ fun ConversationScreen(
                                 showDateSeparator = showDateSeparator,
                                 dateSeparatorText = msg.timestamp?.toDate()?.let { DateUtils.formatDateSeparator(it.time) } ?: "",
                                 isRecalled = msg.status == "recalled",
+                                avatarInitial = senderInitial,
+                                showAvatar = !isMe && isLastFromSender,
                                 onLongClick = { showMessageMenu = Pair(chatId, msg) }
                             )
                         }
@@ -896,9 +922,12 @@ fun MessageBubble(
     showDateSeparator: Boolean = false,
     dateSeparatorText: String = "",
     isRecalled: Boolean = false,
+    avatarInitial: String = "",
+    showAvatar: Boolean = false,
     onLongClick: (() -> Unit)? = null
 ) {
     val nc = MaterialTheme.nexusColors
+    val avatarSize = 28
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -933,69 +962,101 @@ fun MessageBubble(
             modifier = Modifier.fillMaxWidth()
         ) {
             if (!isMe) {
-                Spacer(modifier = Modifier.width(4.dp))
+                if (showAvatar) {
+                    MessageAvatar(
+                        initial = avatarInitial,
+                        size = avatarSize,
+                        modifier = Modifier.align(Alignment.Bottom)
+                    )
+                } else {
+                    Spacer(modifier = Modifier.size(avatarSize.dp).align(Alignment.Bottom))
+                }
+                Spacer(modifier = Modifier.width(6.dp))
             }
 
-            Column(
-                horizontalAlignment = if (isMe) Alignment.End else Alignment.Start
+            Box(
+                modifier = Modifier
+                    .widthIn(max = 280.dp)
+                    .combinedClickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {},
+                        onLongClick = onLongClick
+                    )
+                    .background(
+                        brush = if (isMe) Brush.linearGradient(listOf(Color(0xFF5A55FF), Color(0xFF3B82F6)))
+                                else SolidColor(nc.receivedBubble),
+                        shape = RoundedCornerShape(
+                            topStart = if (isMe) 18.dp else 4.dp,
+                            topEnd = if (isMe) 4.dp else 18.dp,
+                            bottomStart = 18.dp,
+                            bottomEnd = 18.dp
+                        )
+                    )
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .widthIn(max = 280.dp)
-                        .combinedClickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = {},
-                            onLongClick = onLongClick
-                        )
-                        .background(
-                            brush = if (isMe) Brush.linearGradient(listOf(Color(0xFF5A55FF), Color(0xFF3B82F6)))
-                                    else SolidColor(nc.receivedBubble),
-                            shape = RoundedCornerShape(
-                                topStart = if (isMe) 18.dp else 4.dp,
-                                topEnd = if (isMe) 4.dp else 18.dp,
-                                bottomStart = 18.dp,
-                                bottomEnd = 18.dp
-                            )
-                        )
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                ) {
-                    Text(
-                        text = if (isRecalled) "Tin nhắn đã được thu hồi" else text,
-                        color = if (isRecalled) nc.textTertiary else if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
-                        fontSize = 15.sp,
-                        lineHeight = 20.sp,
-                        fontStyle = if (isRecalled) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal
-                    )
-                }
-                Spacer(modifier = Modifier.height(2.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = time,
-                        color = nc.textTertiary,
-                        fontSize = 11.sp,
-                        modifier = Modifier.padding(horizontal = 4.dp)
-                    )
-                    if (isMe && status.isNotEmpty()) {
-                        Text(
-                            text = when(status) {
-                                "seen" -> "Đã xem"
-                                "delivered" -> "Đã nhận"
-                                "recalled" -> ""
-                                else -> "Đã gửi"
-                            },
-                            color = if (status == "seen") NexusPrimary else nc.textTertiary,
-                            fontSize = 10.sp,
-                            modifier = Modifier.padding(horizontal = 4.dp)
-                        )
-                    }
-                }
+                Text(
+                    text = if (isRecalled) "Tin nhắn đã được thu hồi" else text,
+                    color = if (isRecalled) nc.textTertiary else if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
+                    fontSize = 15.sp,
+                    lineHeight = 20.sp,
+                    fontStyle = if (isRecalled) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal
+                )
             }
 
             if (isMe) {
                 Spacer(modifier = Modifier.width(4.dp))
             }
         }
+
+        val timeStartPadding = if (!isMe) avatarSize.dp + 6.dp else 0.dp
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = timeStartPadding, end = if (isMe) 4.dp else 0.dp),
+            horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = time,
+                color = nc.textTertiary,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+            if (isMe && status.isNotEmpty()) {
+                Text(
+                    text = when(status) {
+                        "seen" -> "Đã xem"
+                        "delivered" -> "Đã nhận"
+                        "recalled" -> ""
+                        else -> "Đã gửi"
+                    },
+                    color = if (status == "seen") NexusPrimary else nc.textTertiary,
+                    fontSize = 10.sp,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessageAvatar(initial: String, size: Int = 28, modifier: Modifier = Modifier) {
+    val nc = MaterialTheme.nexusColors
+    val safeInitial = initial.ifBlank { "?" }
+    Box(
+        modifier = modifier
+            .size(size.dp)
+            .clip(CircleShape)
+            .background(nc.avatarBg),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = safeInitial,
+            color = nc.textPrimary,
+            fontSize = (size / 2.2f).sp,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
 

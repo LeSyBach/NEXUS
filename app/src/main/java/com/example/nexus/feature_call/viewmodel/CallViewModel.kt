@@ -5,6 +5,11 @@ import androidx.lifecycle.viewModelScope
 import com.example.nexus.data.firebase.CallSignal
 import com.example.nexus.data.firebase.CallSignalingService
 import com.example.nexus.data.firebase.NotificationService
+import com.example.nexus.data.firebase.WebRtcSignalingService
+import com.example.nexus.data.webrtc.WebRtcClient
+import com.example.nexus.data.webrtc.toData
+import com.example.nexus.data.webrtc.toIceCandidate
+import com.example.nexus.data.webrtc.toSessionDescription
 import com.example.nexus.data.repository.ChatRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -24,7 +29,9 @@ enum class CallState {
 class CallViewModel @Inject constructor(
     private val callSignalingService: CallSignalingService,
     private val chatRepository: ChatRepository,
-    private val notificationService: NotificationService
+    private val notificationService: NotificationService,
+    private val webRtcClient: WebRtcClient,
+    private val webRtcSignalingService: WebRtcSignalingService
 ) : ViewModel() {
 
     private val _callState = MutableStateFlow(CallState.IDLE)
@@ -47,6 +54,9 @@ class CallViewModel @Inject constructor(
 
     private var durationJob: Job? = null
     private var statusJob: Job? = null
+    private var offerJob: Job? = null
+    private var answerJob: Job? = null
+    private var iceJob: Job? = null
 
     val currentUserId: String?
         get() = chatRepository.getCurrentUserId()
@@ -78,6 +88,10 @@ class CallViewModel @Inject constructor(
                     callId = callId,
                     callType = type
                 )
+                startWebRtc(callId, myId, signal.type == "video")
+                createAndSendOffer(callId, myId)
+                observeAnswer(callId)
+                observeRemoteIce(callId, myId)
                 observeCallStatus(callId)
             } catch (_: Exception) {}
         }
@@ -96,6 +110,11 @@ class CallViewModel @Inject constructor(
                 callSignalingService.acceptCall(signal.callId)
                 _callState.value = CallState.CONNECTED
                 startDurationTimer()
+
+                val myId = currentUserId ?: return@launch
+                startWebRtc(signal.callId, myId, signal.type == "video")
+                observeOfferAndAnswer(signal.callId, myId)
+                observeRemoteIce(signal.callId, myId)
             } catch (_: Exception) {}
         }
     }
@@ -124,14 +143,17 @@ class CallViewModel @Inject constructor(
 
     fun toggleMute() {
         _isMuted.value = !_isMuted.value
+        webRtcClient.setAudioEnabled(!_isMuted.value)
     }
 
     fun toggleSpeaker() {
         _isSpeakerOn.value = !_isSpeakerOn.value
+        webRtcClient.setSpeaker(_isSpeakerOn.value)
     }
 
     fun toggleVideo() {
         _isVideoEnabled.value = !_isVideoEnabled.value
+        webRtcClient.setVideoEnabled(_isVideoEnabled.value)
     }
 
     private fun observeCallStatus(callId: String) {
@@ -168,10 +190,15 @@ class CallViewModel @Inject constructor(
     private fun cleanup() {
         durationJob?.cancel()
         statusJob?.cancel()
+        offerJob?.cancel()
+        answerJob?.cancel()
+        iceJob?.cancel()
+        webRtcClient.release()
         viewModelScope.launch {
             try {
                 _currentSignal.value?.let {
                     callSignalingService.removeCall(it.callId)
+                    webRtcSignalingService.clearSession(it.callId)
                 }
             } catch (_: Exception) {}
         }
@@ -204,4 +231,67 @@ class CallViewModel @Inject constructor(
             } catch (_: Exception) {}
         }
     }
+
+    private fun startWebRtc(callId: String, myId: String, videoEnabled: Boolean) {
+        webRtcClient.start(videoEnabled) { candidate ->
+            viewModelScope.launch {
+                try {
+                    webRtcSignalingService.sendIceCandidate(callId, candidate.toData(myId))
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    private fun createAndSendOffer(callId: String, myId: String) {
+        webRtcClient.createOffer { sdp ->
+            viewModelScope.launch {
+                try {
+                    webRtcSignalingService.sendOffer(callId, sdp.toData(myId))
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    private fun observeOfferAndAnswer(callId: String, myId: String) {
+        offerJob?.cancel()
+        offerJob = viewModelScope.launch {
+            webRtcSignalingService.observeOffer(callId).collect { offer ->
+                if (offer != null && offer.senderId != myId) {
+                    webRtcClient.setRemoteDescription(offer.toSessionDescription()) {
+                        webRtcClient.createAnswer { answer ->
+                            viewModelScope.launch {
+                                try {
+                                    webRtcSignalingService.sendAnswer(callId, answer.toData(myId))
+                                } catch (_: Exception) {}
+                            }
+                        }
+                    }
+                    offerJob?.cancel()
+                }
+            }
+        }
+    }
+
+    private fun observeAnswer(callId: String) {
+        answerJob?.cancel()
+        val myId = currentUserId ?: return
+        answerJob = viewModelScope.launch {
+            webRtcSignalingService.observeAnswer(callId).collect { answer ->
+                if (answer != null && answer.senderId != myId) {
+                    webRtcClient.setRemoteDescription(answer.toSessionDescription())
+                    answerJob?.cancel()
+                }
+            }
+        }
+    }
+
+    private fun observeRemoteIce(callId: String, myId: String) {
+        iceJob?.cancel()
+        iceJob = viewModelScope.launch {
+            webRtcSignalingService.observeRemoteIceCandidates(callId, myId).collect { data ->
+                webRtcClient.addIceCandidate(data.toIceCandidate())
+            }
+        }
+    }
 }
+
