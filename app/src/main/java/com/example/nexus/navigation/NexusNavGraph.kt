@@ -10,6 +10,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -29,6 +34,7 @@ import com.example.nexus.feature_contact.ui.FriendRequestsScreen
 import com.example.nexus.feature_contact.ui.SearchUserScreen
 import com.example.nexus.feature_call.ui.OngoingCallScreen
 import com.example.nexus.feature_call.ui.IncomingCallScreen
+import com.example.nexus.feature_call.ui.rememberCallPermissions
 import com.example.nexus.feature_call.viewmodel.CallViewModel
 import com.example.nexus.feature_profile.ui.ProfileScreen
 import com.example.nexus.feature_profile.ui.EditProfileScreen
@@ -210,12 +216,12 @@ fun NexusNavGraph(
                 onNavigateToGroupInfo = { groupId ->
                     navController.navigate(Screen.ChatInfo.createRoute(groupId))
                 },
-                onStartCall = { receiverId, callType ->
+                onStartCall = { receiverId, callType, receiverName ->
                     navController.navigate(Screen.OngoingCall.createRoute(
                         callId = java.util.UUID.randomUUID().toString(),
                         callType = callType,
                         receiverId = receiverId,
-                        receiverName = ""
+                        receiverName = receiverName
                     ))
                 }
             )
@@ -244,12 +250,12 @@ fun NexusNavGraph(
                 viewModel = chatViewModel,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToChat = { navController.popBackStack() },
-                onStartCall = { receiverId, callType ->
+                onStartCall = { receiverId, callType, receiverName ->
                     navController.navigate(Screen.OngoingCall.createRoute(
                         callId = java.util.UUID.randomUUID().toString(),
                         callType = callType,
                         receiverId = receiverId,
-                        receiverName = ""
+                        receiverName = receiverName
                     ))
                 }
             )
@@ -292,9 +298,45 @@ fun NexusNavGraph(
             val receiverName = backStackEntry.arguments?.getString("receiverName") ?: ""
             val callViewModel: CallViewModel = hiltViewModel()
 
+            // Permission check before initiating outgoing call
+            var callStarted by remember { mutableStateOf(false) }
+            val permissions = rememberCallPermissions(needCamera = callType == "video") {
+                if (receiverId.isNotEmpty() && !callStarted) {
+                    callStarted = true
+                    callViewModel.startCall(receiverId, receiverName, callType)
+                }
+            }
+
             LaunchedEffect(Unit) {
                 if (receiverId.isNotEmpty()) {
-                    callViewModel.startCall(receiverId, receiverName, callType)
+                    // Outgoing call — check permissions then start
+                    if (permissions.allGranted && !callStarted) {
+                        callStarted = true
+                        callViewModel.startCall(receiverId, receiverName, callType)
+                    } else if (!permissions.allGranted) {
+                        permissions.requestPermissions()
+                    }
+                } else if (!callStarted) {
+                    // Incoming call accepted (from FCM notification or IncomingCallScreen)
+                    // receiverId is empty when accepting — load signal from RTDB
+                    callStarted = true
+                    callViewModel.acceptCallFromNotification(callId, callType)
+                }
+            }
+
+            // Auto-navigate back when call ends (skip initial IDLE state)
+            val callState by callViewModel.callState.collectAsState()
+            var wasCallActive by remember { mutableStateOf(false) }
+            LaunchedEffect(callState) {
+                if (callState == com.example.nexus.feature_call.viewmodel.CallState.OUTGOING ||
+                    callState == com.example.nexus.feature_call.viewmodel.CallState.CONNECTED ||
+                    callState == com.example.nexus.feature_call.viewmodel.CallState.INCOMING) {
+                    wasCallActive = true
+                }
+                if (wasCallActive && callState == com.example.nexus.feature_call.viewmodel.CallState.ENDED) {
+                    kotlinx.coroutines.delay(1500)
+                    callViewModel.resetState()
+                    navController.popBackStack()
                 }
             }
 
@@ -304,7 +346,6 @@ fun NexusNavGraph(
                 viewModel = callViewModel,
                 onNavigateBack = {
                     callViewModel.endCall()
-                    navController.popBackStack()
                 }
             )
         }
@@ -319,8 +360,8 @@ fun NexusNavGraph(
                 callId = callId,
                 viewModel = callViewModel,
                 onNavigateBack = { navController.popBackStack() },
-                onCallAccepted = {
-                    navController.navigate(Screen.OngoingCall.createRoute(callId, "voice")) {
+                onCallAccepted = { callType ->
+                    navController.navigate(Screen.OngoingCall.createRoute(callId, callType)) {
                         popUpTo(Screen.IncomingCall.route) { inclusive = true }
                     }
                 }

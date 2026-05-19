@@ -60,15 +60,38 @@ class NexusApplication : Application() {
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             }
 
-            // Chỉ tạo mới nếu channel chưa tồn tại (không update channel cũ
-            // vì user có thể đã tắt sound ở setting — Android không cho override)
+            // ── Channel cuộc gọi đến ────────────────────────────────
+            val ringtoneSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+            val callAudioAttr = AudioAttributes.Builder()
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                .build()
+
+            val callChannel = NotificationChannel(
+                CHANNEL_CALLS,
+                "Cuộc gọi",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Thông báo khi có cuộc gọi đến"
+                enableLights(true)
+                lightColor = ContextCompat.getColor(this@NexusApplication, R.color.nexus_accent)
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 500, 500, 500, 500, 500)
+                setSound(ringtoneSound, callAudioAttr)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+            }
+
             if (manager.getNotificationChannel(CHANNEL_MESSAGES) == null) {
                 manager.createNotificationChannel(msgChannel)
+            }
+            if (manager.getNotificationChannel(CHANNEL_CALLS) == null) {
+                manager.createNotificationChannel(callChannel)
             }
         }
     }
 
     companion object {
         const val CHANNEL_MESSAGES = "nexus_messages"
+        const val CHANNEL_CALLS = "nexus_calls"
     }
 }

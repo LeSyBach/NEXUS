@@ -535,7 +535,7 @@ fun ConversationScreen(
     viewModel: ChatViewModel? = null,
     onNavigateBack: () -> Unit,
     onNavigateToGroupInfo: (String) -> Unit,
-    onStartCall: (String, String) -> Unit = { _, _ -> }
+    onStartCall: (String, String, String) -> Unit = { _, _, _ -> }
 ) {
     val nc = MaterialTheme.nexusColors
     var messageText by remember { mutableStateOf("") }
@@ -650,13 +650,13 @@ fun ConversationScreen(
 
             IconButton(onClick = {
                 val otherId = otherUser?.uid ?: ""
-                if (otherId.isNotEmpty()) onStartCall(otherId, "voice")
+                if (otherId.isNotEmpty()) onStartCall(otherId, "voice", displayName)
             }) {
                 Icon(Icons.Default.Call, contentDescription = "Call", tint = NexusPrimary, modifier = Modifier.size(22.dp))
             }
             IconButton(onClick = {
                 val otherId = otherUser?.uid ?: ""
-                if (otherId.isNotEmpty()) onStartCall(otherId, "video")
+                if (otherId.isNotEmpty()) onStartCall(otherId, "video", displayName)
             }) {
                 Icon(Icons.Default.Videocam, contentDescription = "Video", tint = NexusPrimary, modifier = Modifier.size(22.dp))
             }

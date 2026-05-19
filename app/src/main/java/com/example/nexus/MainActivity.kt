@@ -79,7 +79,25 @@ class MainActivity : ComponentActivity() {
                                 if (!callId.isNullOrEmpty()) {
                                     navController.navigate(
                                         com.example.nexus.navigation.Screen.IncomingCall.createRoute(callId)
+                                    ) {
+                                        launchSingleTop = true
+                                    }
+                                }
+                            }
+                            "ongoing_call" -> {
+                                // From call accept action in notification
+                                val callId = activeIntent.getStringExtra("callId") ?: return@LaunchedEffect
+                                val callType = activeIntent.getStringExtra("callType") ?: "voice"
+                                val callerName = activeIntent.getStringExtra("callerName") ?: ""
+                                navController.navigate(
+                                    com.example.nexus.navigation.Screen.OngoingCall.createRoute(
+                                        callId = callId,
+                                        callType = callType,
+                                        receiverId = "",  // already accepted, no need to initiate
+                                        receiverName = callerName
                                     )
+                                ) {
+                                    launchSingleTop = true
                                 }
                             }
                             "friend_requests" -> {

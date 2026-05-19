@@ -74,7 +74,8 @@ class NotificationService @Inject constructor(
         receiverId: String,
         callerName: String,
         callId: String,
-        callType: String
+        callType: String,
+        callerId: String = ""
     ) {
         try {
             val data = mapOf(
@@ -82,7 +83,8 @@ class NotificationService @Inject constructor(
                 "callerName" to callerName,
                 "callId" to callId,
                 "callType" to callType,
-                "receiverId" to receiverId
+                "receiverId" to receiverId,
+                "callerId" to callerId
             )
 
             val success = sendFcmToDevice(receiverId, data)

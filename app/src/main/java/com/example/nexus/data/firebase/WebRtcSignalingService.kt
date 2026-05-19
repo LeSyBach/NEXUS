@@ -2,7 +2,6 @@ package com.example.nexus.data.firebase
 
 import com.example.nexus.data.webrtc.IceCandidateData
 import com.example.nexus.data.webrtc.SessionDescriptionData
-import com.google.firebase.database.ChildEventListener
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
@@ -64,21 +63,24 @@ class WebRtcSignalingService @Inject constructor(
 
     fun observeRemoteIceCandidates(callId: String, localUserId: String): Flow<IceCandidateData> = callbackFlow {
         val ref = rootRef.child(callId).child("candidates")
-        val listener = object : ChildEventListener {
-            override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
-                val data = snapshot.getValue(IceCandidateData::class.java) ?: return
-                if (data.senderId != localUserId) {
-                    trySend(data)
+        // Track already-sent candidates to avoid duplicates on ValueEvent updates
+        val sentKeys = mutableSetOf<String>()
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                for (child in snapshot.children) {
+                    val key = child.key ?: continue
+                    if (key in sentKeys) continue
+                    val data = child.getValue(IceCandidateData::class.java) ?: continue
+                    if (data.senderId != localUserId) {
+                        sentKeys.add(key)
+                        trySend(data)
+                    }
                 }
             }
 
-            override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) = Unit
-            override fun onChildRemoved(snapshot: DataSnapshot) = Unit
-            override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) = Unit
-
             override fun onCancelled(error: DatabaseError) = Unit
         }
-        ref.addChildEventListener(listener)
+        ref.addValueEventListener(listener)
         awaitClose { ref.removeEventListener(listener) }
     }
 

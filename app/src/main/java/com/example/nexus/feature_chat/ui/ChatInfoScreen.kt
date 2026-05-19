@@ -39,7 +39,7 @@ fun ChatInfoScreen(
     viewModel: ChatViewModel? = null,
     onNavigateBack: () -> Unit,
     onNavigateToChat: (String) -> Unit,
-    onStartCall: (String, String) -> Unit = { _, _ -> }
+    onStartCall: (String, String, String) -> Unit = { _, _, _ -> }
 ) {
     val nc = MaterialTheme.nexusColors
     val context = LocalContext.current
@@ -201,7 +201,7 @@ fun ChatInfoScreen(
                     color = NexusPrimary,
                     onClick = {
                         val otherId = otherUser?.uid ?: ""
-                        if (otherId.isNotEmpty()) onStartCall(otherId, "voice")
+                        if (otherId.isNotEmpty()) onStartCall(otherId, "voice", displayName)
                     }
                 )
                 ActionButton(
@@ -210,7 +210,7 @@ fun ChatInfoScreen(
                     color = NexusPrimary,
                     onClick = {
                         val otherId = otherUser?.uid ?: ""
-                        if (otherId.isNotEmpty()) onStartCall(otherId, "video")
+                        if (otherId.isNotEmpty()) onStartCall(otherId, "video", displayName)
                     }
                 )
             }

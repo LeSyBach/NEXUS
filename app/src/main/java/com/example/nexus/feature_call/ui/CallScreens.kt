@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -29,16 +30,20 @@ import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,10 +53,14 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.example.nexus.feature_call.viewmodel.CallState
 import com.example.nexus.feature_call.viewmodel.CallViewModel
 import com.example.nexus.ui.theme.nexusColors
 import kotlinx.coroutines.delay
+import org.webrtc.EglBase
+import org.webrtc.RendererCommon
+import org.webrtc.SurfaceViewRenderer
 
 @Composable
 fun CallHistoryScreen(
@@ -85,70 +94,84 @@ fun OngoingCallScreen(
     val isConnected = callState == CallState.CONNECTED
 
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(nc.background, nc.surface.copy(alpha = 0.8f))))
+        modifier = Modifier.fillMaxSize()
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Spacer(modifier = Modifier.weight(1f))
+        // Background layer
+        if (isVideo) {
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black))
+        } else {
+            Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(nc.background, nc.surface.copy(alpha = 0.8f)))))
+        }
+        if (isVideo) {
+            // ─── VIDEO CALL LAYOUT ───
+            val remoteVideoTrack = viewModel?.remoteVideoTrack?.collectAsState()?.value
+            val localTrack = viewModel?.localVideoTrack?.collectAsState()?.value
+            val eglContext = viewModel?.eglContext
 
-            AvatarCircle(initial = initial, size = 120)
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Text(
-                text = displayName,
-                color = nc.textPrimary,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            if (isConnected) {
-                Text(
-                    text = viewModel?.formatDuration(callDuration) ?: "00:00",
-                    color = nc.textSecondary,
-                    fontSize = 18.sp
+            // Remote video or local preview as background
+            val currentRemote = remoteVideoTrack
+            if (currentRemote != null && eglContext != null) {
+                RemoteVideoRenderer(
+                    videoTrack = currentRemote,
+                    eglContext = eglContext,
+                    modifier = Modifier.fillMaxSize()
                 )
-            } else {
-                Text(
-                    text = "Đang kết nối...",
-                    color = nc.textTertiary,
-                    fontSize = 16.sp
+            } else if (localTrack != null && eglContext != null) {
+                // No remote yet — show local video as full background
+                LocalVideoRenderer(
+                    videoTrack = localTrack,
+                    eglContext = eglContext,
+                    modifier = Modifier.fillMaxSize()
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            // Top overlay — name + duration
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 48.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = displayName,
+                    color = Color.White,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                if (isConnected) {
+                    Text(
+                        text = viewModel?.formatDuration(callDuration) ?: "00:00",
+                        color = Color.White.copy(alpha = 0.7f),
+                        fontSize = 16.sp
+                    )
+                } else {
+                    Text(
+                        text = "Đang kết nối...",
+                        color = Color.White.copy(alpha = 0.5f),
+                        fontSize = 14.sp
+                    )
+                }
+            }
 
-            Text(
-                text = if (isVideo) "Cuộc gọi video" else "Cuộc gọi thoại",
-                color = nc.textTertiary,
-                fontSize = 14.sp
-            )
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            if (isVideo) {
-                Box(
+            // Small local video preview at bottom-right (when remote is showing)
+            if (currentRemote != null && localTrack != null && eglContext != null) {
+                LocalVideoRenderer(
+                    videoTrack = localTrack,
+                    eglContext = eglContext,
                     modifier = Modifier
-                        .offset(x = (-24).dp)
-                        .align(Alignment.End)
-                        .size(120.dp, 160.dp)
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 16.dp, bottom = 120.dp)
+                        .size(110.dp, 146.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color.Black)
                 )
-                Spacer(modifier = Modifier.height(24.dp))
             }
 
+            // Bottom controls
             Row(
-                modifier = Modifier.padding(bottom = 48.dp),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 48.dp),
                 horizontalArrangement = Arrangement.spacedBy(24.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -161,10 +184,9 @@ fun OngoingCallScreen(
                             modifier = Modifier.size(24.dp)
                         )
                     },
-                    backgroundColor = nc.surfaceVariant,
+                    backgroundColor = Color.White.copy(alpha = 0.2f),
                     onClick = { viewModel?.toggleMute() }
                 )
-
                 CallControlButton(
                     icon = {
                         Icon(
@@ -174,25 +196,21 @@ fun OngoingCallScreen(
                             modifier = Modifier.size(24.dp)
                         )
                     },
-                    backgroundColor = nc.surfaceVariant,
+                    backgroundColor = Color.White.copy(alpha = 0.2f),
                     onClick = { viewModel?.toggleSpeaker() }
                 )
-
-                if (isVideo) {
-                    CallControlButton(
-                        icon = {
-                            Icon(
-                                if (isVideoEnabled) Icons.Default.Videocam else Icons.Default.VideocamOff,
-                                contentDescription = if (isVideoEnabled) "Video off" else "Video on",
-                                tint = Color.White,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        },
-                        backgroundColor = nc.surfaceVariant,
-                        onClick = { viewModel?.toggleVideo() }
-                    )
-                }
-
+                CallControlButton(
+                    icon = {
+                        Icon(
+                            if (isVideoEnabled) Icons.Default.Videocam else Icons.Default.VideocamOff,
+                            contentDescription = if (isVideoEnabled) "Video off" else "Video on",
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    },
+                    backgroundColor = Color.White.copy(alpha = 0.2f),
+                    onClick = { viewModel?.toggleVideo() }
+                )
                 CallControlButton(
                     icon = {
                         Icon(
@@ -204,10 +222,100 @@ fun OngoingCallScreen(
                     },
                     backgroundColor = Color(0xFFEF4444),
                     size = 64,
-                    onClick = {
-                        viewModel?.endCall()
-                    }
+                    onClick = { viewModel?.endCall() }
                 )
+            }
+        } else {
+            // ─── VOICE CALL LAYOUT ───
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Spacer(modifier = Modifier.weight(1f))
+
+                AvatarCircle(initial = initial, size = 120)
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Text(
+                    text = displayName,
+                    color = nc.textPrimary,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                if (isConnected) {
+                    Text(
+                        text = viewModel?.formatDuration(callDuration) ?: "00:00",
+                        color = nc.textSecondary,
+                        fontSize = 18.sp
+                    )
+                } else {
+                    Text(
+                        text = "Đang kết nối...",
+                        color = nc.textTertiary,
+                        fontSize = 16.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "Cuộc gọi thoại",
+                    color = nc.textTertiary,
+                    fontSize = 14.sp
+                )
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                Row(
+                    modifier = Modifier.padding(bottom = 48.dp),
+                    horizontalArrangement = Arrangement.spacedBy(24.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CallControlButton(
+                        icon = {
+                            Icon(
+                                if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
+                                contentDescription = if (isMuted) "Unmute" else "Mute",
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        },
+                        backgroundColor = nc.surfaceVariant,
+                        onClick = { viewModel?.toggleMute() }
+                    )
+                    CallControlButton(
+                        icon = {
+                            Icon(
+                                if (isSpeakerOn) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
+                                contentDescription = if (isSpeakerOn) "Speaker off" else "Speaker on",
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        },
+                        backgroundColor = nc.surfaceVariant,
+                        onClick = { viewModel?.toggleSpeaker() }
+                    )
+                    CallControlButton(
+                        icon = {
+                            Icon(
+                                Icons.Default.CallEnd,
+                                contentDescription = "End call",
+                                tint = Color.White,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        },
+                        backgroundColor = Color(0xFFEF4444),
+                        size = 64,
+                        onClick = { viewModel?.endCall() }
+                    )
+                }
             }
         }
     }
@@ -218,7 +326,7 @@ fun IncomingCallScreen(
     callId: String,
     viewModel: CallViewModel? = null,
     onNavigateBack: () -> Unit,
-    onCallAccepted: () -> Unit
+    onCallAccepted: (callType: String) -> Unit
 ) {
     val nc = MaterialTheme.nexusColors
     val signal = viewModel?.currentSignal?.collectAsState()?.value
@@ -226,6 +334,26 @@ fun IncomingCallScreen(
     val displayName = signal?.callerName ?: "Người dùng"
     val initial = displayName.firstOrNull()?.uppercase() ?: "?"
     val isVideo = signal?.type == "video"
+
+    // Permission handling
+    var pendingAccept by remember { mutableStateOf(false) }
+    var showPermissionRationale by remember { mutableStateOf(false) }
+    val permissions = rememberCallPermissions(needCamera = isVideo) {
+        // All permissions granted — proceed with accept
+        if (pendingAccept) {
+            pendingAccept = false
+            viewModel?.acceptCall()
+            onCallAccepted(if (isVideo) "video" else "voice")
+        }
+    }
+
+    // If permissions were requested and still not granted, show rationale
+    LaunchedEffect(permissions.shouldShowRationale) {
+        if (permissions.shouldShowRationale && pendingAccept) {
+            showPermissionRationale = true
+            pendingAccept = false
+        }
+    }
 
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val scale by infiniteTransition.animateFloat(
@@ -237,6 +365,33 @@ fun IncomingCallScreen(
         ),
         label = "scale"
     )
+
+    // Permission rationale dialog
+    if (showPermissionRationale) {
+        AlertDialog(
+            onDismissRequest = { showPermissionRationale = false },
+            title = { Text("Cần quyền truy cập") },
+            text = {
+                Text(
+                    if (isVideo) "Để thực hiện cuộc gọi video, ứng dụng cần quyền truy cập Micro và Camera."
+                    else "Để thực hiện cuộc gọi, ứng dụng cần quyền truy cập Micro."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showPermissionRationale = false
+                    permissions.requestPermissions()
+                }) {
+                    Text("Cấp quyền")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPermissionRationale = false }) {
+                    Text("Hủy")
+                }
+            }
+        )
+    }
 
     Box(
         modifier = Modifier
@@ -283,8 +438,7 @@ fun IncomingCallScreen(
                         modifier = Modifier
                             .size(72.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFFEF4444)
-                            )
+                            .background(Color(0xFFEF4444))
                             .clickable {
                                 viewModel?.rejectCall()
                                 onNavigateBack()
@@ -313,8 +467,13 @@ fun IncomingCallScreen(
                             .clip(CircleShape)
                             .background(Color(0xFF22C55E))
                             .clickable {
-                                viewModel?.acceptCall()
-                                onCallAccepted()
+                                if (permissions.allGranted) {
+                                    viewModel?.acceptCall()
+                                    onCallAccepted(if (isVideo) "video" else "voice")
+                                } else {
+                                    pendingAccept = true
+                                    permissions.requestPermissions()
+                                }
                             },
                         contentAlignment = Alignment.Center
                     ) {
@@ -343,6 +502,9 @@ fun OutgoingCallScreen(
 
     val displayName = signal?.callerName ?: "Người dùng"
     val initial = displayName.firstOrNull()?.uppercase() ?: "?"
+    val isVideo = signal?.type == "video"
+    val localTrack = viewModel?.localVideoTrack?.collectAsState()?.value
+    val eglContext = viewModel?.eglContext
 
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val alpha by infiniteTransition.animateFloat(
@@ -360,39 +522,41 @@ fun OutgoingCallScreen(
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(nc.background, nc.surface.copy(alpha = 0.8f))))
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Spacer(modifier = Modifier.weight(1f))
+        if (isVideo) {
+            if (localTrack != null && eglContext != null) {
+                LocalVideoRenderer(
+                    videoTrack = localTrack,
+                    eglContext = eglContext,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Box(modifier = Modifier.fillMaxSize().background(Color.Black))
+            }
 
-            AvatarCircle(initial = initial, size = 120)
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Text(
-                text = displayName,
-                color = nc.textPrimary,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Text(
-                text = "Đang gọi...",
-                color = nc.textSecondary,
-                fontSize = 16.sp,
-                modifier = Modifier.graphicsLayer { this.alpha = alpha }
-            )
-
-            Spacer(modifier = Modifier.weight(1f))
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 48.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = displayName,
+                    color = Color.White,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Đang gọi...",
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = 16.sp,
+                    modifier = Modifier.graphicsLayer { this.alpha = alpha }
+                )
+            }
 
             Box(
                 modifier = Modifier
+                    .align(Alignment.BottomCenter)
                     .padding(bottom = 64.dp)
                     .size(72.dp)
                     .clip(CircleShape)
@@ -409,6 +573,58 @@ fun OutgoingCallScreen(
                     tint = Color.White,
                     modifier = Modifier.size(32.dp)
                 )
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Spacer(modifier = Modifier.weight(1f))
+
+                AvatarCircle(initial = initial, size = 120)
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Text(
+                    text = displayName,
+                    color = nc.textPrimary,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = "Đang gọi...",
+                    color = nc.textSecondary,
+                    fontSize = 16.sp,
+                    modifier = Modifier.graphicsLayer { this.alpha = alpha }
+                )
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                Box(
+                    modifier = Modifier
+                        .padding(bottom = 64.dp)
+                        .size(72.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFEF4444))
+                        .clickable {
+                            viewModel?.rejectCall()
+                            onNavigateBack()
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.CallEnd,
+                        contentDescription = "Cancel",
+                        tint = Color.White,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
             }
         }
     }
@@ -430,7 +646,7 @@ fun CallRouter(
             callId = callId,
             viewModel = viewModel,
             onNavigateBack = onNavigateBack,
-            onCallAccepted = {}
+            onCallAccepted = { _ -> }
         )
         CallState.CONNECTED -> OngoingCallScreen(
             callId = callId,
@@ -500,3 +716,47 @@ private fun CallControlButton(
 @Composable
 private fun <T> rememberStaticState(value: T) =
     remember { mutableStateOf(value) }
+
+@Composable
+fun RemoteVideoRenderer(
+    videoTrack: org.webrtc.VideoTrack,
+    eglContext: EglBase.Context,
+    modifier: Modifier = Modifier
+) {
+    AndroidView(
+        factory = { ctx ->
+            SurfaceViewRenderer(ctx).apply {
+                init(eglContext, null)
+                setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT)
+                setMirror(false)
+                videoTrack.addSink(this)
+            }
+        },
+        update = { view ->
+            videoTrack.addSink(view)
+        },
+        modifier = modifier
+    )
+}
+
+@Composable
+fun LocalVideoRenderer(
+    videoTrack: org.webrtc.VideoTrack,
+    eglContext: EglBase.Context,
+    modifier: Modifier = Modifier
+) {
+    AndroidView(
+        factory = { ctx ->
+            SurfaceViewRenderer(ctx).apply {
+                init(eglContext, null)
+                setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL)
+                setMirror(true)
+                videoTrack.addSink(this)
+            }
+        },
+        update = { view ->
+            videoTrack.addSink(view)
+        },
+        modifier = modifier
+    )
+}

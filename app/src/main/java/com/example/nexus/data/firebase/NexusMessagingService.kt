@@ -1,5 +1,6 @@
 package com.example.nexus.data.firebase
 
+import android.Manifest
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
@@ -15,6 +16,7 @@ import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.util.Log
 import android.util.LruCache
+import androidx.annotation.RequiresPermission
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.example.nexus.MainActivity
@@ -61,9 +63,88 @@ class NexusMessagingService : FirebaseMessagingService() {
         when (data["type"] ?: "message") {
             "message"        -> handleMessageNotification(data)
             "friend_request" -> handleFriendRequestNotification(data)
-            "call"           -> Log.d(TAG, "Call notification ignored")
+            "call"           -> handleCallNotification(data)
             else             -> handleMessageNotification(data)
         }
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // CUỘC GỌI ĐẾN (Full-Screen Intent)
+    // ════════════════════════════════════════════════════════════════
+
+    @RequiresPermission(Manifest.permission.POST_NOTIFICATIONS)
+    private fun handleCallNotification(data: Map<String, String>) {
+        val callId = data["callId"] ?: return
+        val callerName = data["callerName"] ?: "Ai đó"
+        val callType = data["callType"] ?: "voice"
+        val callerId = data["callerId"] ?: ""
+
+        // Don't show notification for calls from self
+        val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
+        if (callerId.isNotEmpty() && callerId == currentUserId) return
+
+        Log.d(TAG, "Showing incoming call notification: callId=$callId, caller=$callerName")
+
+        // Full-screen intent — launches IncomingCallScreen on lockscreen
+        val fullScreenIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("navigateTo", "incoming_call")
+            putExtra("callId", callId)
+            putExtra("callType", callType)
+            putExtra("callerName", callerName)
+        }
+        val fullScreenPendingIntent = PendingIntent.getActivity(
+            this, callId.hashCode(), fullScreenIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Accept action
+        val acceptIntent = Intent(this, CallActionReceiver::class.java).apply {
+            action = CallActionReceiver.ACTION_ACCEPT
+            putExtra(CallActionReceiver.EXTRA_CALL_ID, callId)
+            putExtra(CallActionReceiver.EXTRA_CALL_TYPE, callType)
+            putExtra(CallActionReceiver.EXTRA_CALLER_NAME, callerName)
+        }
+        val acceptPendingIntent = PendingIntent.getBroadcast(
+            this, ("accept_$callId").hashCode(), acceptIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Reject action
+        val rejectIntent = Intent(this, CallActionReceiver::class.java).apply {
+            action = CallActionReceiver.ACTION_REJECT
+            putExtra(CallActionReceiver.EXTRA_CALL_ID, callId)
+        }
+        val rejectPendingIntent = PendingIntent.getBroadcast(
+            this, ("reject_$callId").hashCode(), rejectIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val callLabel = if (callType == "video") "Cuộc gọi video" else "Cuộc gọi thoại"
+        val accentColor = ContextCompat.getColor(this, R.color.nexus_accent)
+
+        val notification = NotificationCompat.Builder(this, NexusApplication.CHANNEL_CALLS)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setColor(accentColor)
+            .setContentTitle(callerName)
+            .setContentText("$callLabel đến...")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setOngoing(true)
+            .setAutoCancel(false)
+            .setFullScreenIntent(fullScreenPendingIntent, true)
+            .addAction(R.drawable.ic_notification, "Chấp nhận", acceptPendingIntent)
+            .addAction(R.drawable.ic_notification, "Từ chối", rejectPendingIntent)
+            .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE))
+            .setVibrate(longArrayOf(0, 500, 500, 500, 500, 500))
+            .setTimeoutAfter(60_000L) // Auto-dismiss after 60s
+            .build()
+
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(callId.hashCode(), notification)
     }
 
     // ════════════════════════════════════════════════════════════════

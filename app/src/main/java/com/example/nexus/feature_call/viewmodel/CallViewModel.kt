@@ -1,7 +1,10 @@
 package com.example.nexus.feature_call.viewmodel
 
+import android.content.Context
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.nexus.data.firebase.CallService
 import com.example.nexus.data.firebase.CallSignal
 import com.example.nexus.data.firebase.CallSignalingService
 import com.example.nexus.data.firebase.NotificationService
@@ -12,7 +15,9 @@ import com.example.nexus.data.webrtc.toIceCandidate
 import com.example.nexus.data.webrtc.toSessionDescription
 import com.example.nexus.data.repository.ChatRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,12 +32,17 @@ enum class CallState {
 
 @HiltViewModel
 class CallViewModel @Inject constructor(
+    @ApplicationContext private val appContext: Context,
     private val callSignalingService: CallSignalingService,
     private val chatRepository: ChatRepository,
     private val notificationService: NotificationService,
     private val webRtcClient: WebRtcClient,
     private val webRtcSignalingService: WebRtcSignalingService
 ) : ViewModel() {
+
+    companion object {
+        private const val TAG = "CallViewModel"
+    }
 
     private val _callState = MutableStateFlow(CallState.IDLE)
     val callState: StateFlow<CallState> = _callState
@@ -52,21 +62,31 @@ class CallViewModel @Inject constructor(
     private val _callDuration = MutableStateFlow(0L)
     val callDuration: StateFlow<Long> = _callDuration
 
+    private val _remoteVideoTrack = MutableStateFlow<org.webrtc.VideoTrack?>(null)
+    val remoteVideoTrack: StateFlow<org.webrtc.VideoTrack?> = _remoteVideoTrack
+
+    private val _localVideoTrack = MutableStateFlow<org.webrtc.VideoTrack?>(null)
+    val localVideoTrack: StateFlow<org.webrtc.VideoTrack?> = _localVideoTrack
+
+    val eglContext: org.webrtc.EglBase.Context
+        get() = webRtcClient.eglContext
+
     private var durationJob: Job? = null
     private var statusJob: Job? = null
     private var offerJob: Job? = null
     private var answerJob: Job? = null
     private var iceJob: Job? = null
+    private var isCleaningUp = false
 
     val currentUserId: String?
         get() = chatRepository.getCurrentUserId()
 
-    fun startCall(receiverId: String, receiverName: String, type: String) {
+    fun startCall(receiverId: String, receiverName: String, type: String, callIdOverride: String? = null) {
         viewModelScope.launch {
             try {
                 val myId = currentUserId ?: return@launch
                 val currentUser = chatRepository.getUserById(myId)
-                val callId = UUID.randomUUID().toString()
+                val callId = callIdOverride ?: UUID.randomUUID().toString()
                 val signal = CallSignal(
                     callId = callId,
                     callerId = myId,
@@ -86,14 +106,17 @@ class CallViewModel @Inject constructor(
                     receiverId = receiverId,
                     callerName = signal.callerName,
                     callId = callId,
-                    callType = type
+                    callType = type,
+                    callerId = myId
                 )
                 startWebRtc(callId, myId, signal.type == "video")
                 createAndSendOffer(callId, myId)
                 observeAnswer(callId)
                 observeRemoteIce(callId, myId)
                 observeCallStatus(callId)
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                Log.e(TAG, "startCall failed", e)
+            }
         }
     }
 
@@ -103,6 +126,48 @@ class CallViewModel @Inject constructor(
         _isVideoEnabled.value = signal.type == "video"
     }
 
+    /**
+     * Called when the user accepted the call from the FCM notification.
+     * Loads the call signal from RTDB and starts WebRTC as the receiver.
+     */
+    fun acceptCallFromNotification(callId: String, callType: String) {
+        viewModelScope.launch {
+            try {
+                val myId = currentUserId ?: return@launch
+                Log.d(TAG, "acceptCallFromNotification: callId=$callId, type=$callType")
+
+                // Load signal from RTDB
+                val snapshot = com.google.firebase.database.FirebaseDatabase.getInstance()
+                    .getReference("calls")
+                    .child(callId)
+                    .get()
+                    .await()
+
+                val signal = snapshot.getValue(CallSignal::class.java)
+                if (signal != null) {
+                    Log.d(TAG, "Signal loaded: caller=${signal.callerName}, type=${signal.type}")
+                    _currentSignal.value = signal
+                    _isVideoEnabled.value = signal.type == "video"
+                    _callState.value = CallState.CONNECTED
+                    startDurationTimer()
+                    startCallService(signal)
+                    startWebRtc(callId, myId, signal.type == "video")
+                    observeOfferAndAnswer(callId, myId)
+                    observeRemoteIce(callId, myId)
+                    observeCallStatus(callId)
+                } else {
+                    Log.w(TAG, "Call signal not found in RTDB for callId=$callId")
+                    _callState.value = CallState.CONNECTED
+                    // Still observe status in case signal appears later
+                    observeCallStatus(callId)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "acceptCallFromNotification failed", e)
+                _callState.value = CallState.CONNECTED
+            }
+        }
+    }
+
     fun acceptCall() {
         viewModelScope.launch {
             try {
@@ -110,12 +175,16 @@ class CallViewModel @Inject constructor(
                 callSignalingService.acceptCall(signal.callId)
                 _callState.value = CallState.CONNECTED
                 startDurationTimer()
+                startCallService(signal)
 
                 val myId = currentUserId ?: return@launch
                 startWebRtc(signal.callId, myId, signal.type == "video")
                 observeOfferAndAnswer(signal.callId, myId)
                 observeRemoteIce(signal.callId, myId)
-            } catch (_: Exception) {}
+                observeCallStatus(signal.callId)
+            } catch (e: Exception) {
+                Log.e(TAG, "acceptCall failed", e)
+            }
         }
     }
 
@@ -126,7 +195,9 @@ class CallViewModel @Inject constructor(
                 callSignalingService.rejectCall(signal.callId)
                 _callState.value = CallState.ENDED
                 cleanup()
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                Log.e(TAG, "rejectCall failed", e)
+            }
         }
     }
 
@@ -137,7 +208,9 @@ class CallViewModel @Inject constructor(
                 callSignalingService.endCall(signal.callId)
                 _callState.value = CallState.ENDED
                 cleanup()
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                Log.e(TAG, "endCall failed", e)
+            }
         }
     }
 
@@ -156,15 +229,22 @@ class CallViewModel @Inject constructor(
         webRtcClient.setVideoEnabled(_isVideoEnabled.value)
     }
 
+    // ════════════════════════════════════════════════════════════════
+    // CALL STATUS OBSERVER
+    // ════════════════════════════════════════════════════════════════
+
     private fun observeCallStatus(callId: String) {
         statusJob?.cancel()
+        Log.d(TAG, "observeCallStatus: callId=$callId")
         statusJob = viewModelScope.launch {
             callSignalingService.observeCallStatus(callId).collect { status ->
+                Log.d(TAG, "Call status changed: $status")
                 when (status) {
                     "ongoing" -> {
                         if (_callState.value != CallState.CONNECTED) {
                             _callState.value = CallState.CONNECTED
                             startDurationTimer()
+                            _currentSignal.value?.let { startCallService(it) }
                         }
                     }
                     "rejected", "ended", "missed" -> {
@@ -187,20 +267,62 @@ class CallViewModel @Inject constructor(
         }
     }
 
+    // ════════════════════════════════════════════════════════════════
+    // CALL SERVICE (Foreground Service)
+    // ════════════════════════════════════════════════════════════════
+
+    private fun startCallService(signal: CallSignal) {
+        try {
+            val participantName = if (signal.callerId == currentUserId) {
+                signal.receiverName
+            } else {
+                signal.callerName
+            }
+            CallService.startService(
+                appContext,
+                signal.callId,
+                signal.type,
+                participantName
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start CallService", e)
+        }
+    }
+
+    private fun stopCallService() {
+        try {
+            CallService.stopService(appContext)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to stop CallService", e)
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // CLEANUP
+    // ════════════════════════════════════════════════════════════════
+
     private fun cleanup() {
+        if (isCleaningUp) return
+        isCleaningUp = true
+        Log.d(TAG, "cleanup called")
+
         durationJob?.cancel()
         statusJob?.cancel()
         offerJob?.cancel()
         answerJob?.cancel()
         iceJob?.cancel()
         webRtcClient.release()
+        stopCallService()
         viewModelScope.launch {
             try {
                 _currentSignal.value?.let {
                     callSignalingService.removeCall(it.callId)
                     webRtcSignalingService.clearSession(it.callId)
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                Log.e(TAG, "cleanup failed", e)
+            }
+            isCleaningUp = false
         }
     }
 
@@ -212,6 +334,9 @@ class CallViewModel @Inject constructor(
         _isMuted.value = false
         _isSpeakerOn.value = false
         _isVideoEnabled.value = true
+        _remoteVideoTrack.value = null
+        _localVideoTrack.value = null
+        isCleaningUp = false
     }
 
     fun formatDuration(seconds: Long): String {
@@ -228,26 +353,61 @@ class CallViewModel @Inject constructor(
                         handleIncomingCall(signal)
                     }
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                Log.e(TAG, "observeIncomingCalls failed", e)
+            }
         }
     }
 
+    // ════════════════════════════════════════════════════════════════
+    // WEBRTC ORCHESTRATION
+    // ════════════════════════════════════════════════════════════════
+
     private fun startWebRtc(callId: String, myId: String, videoEnabled: Boolean) {
+        Log.d(TAG, "startWebRtc: callId=$callId, video=$videoEnabled")
         webRtcClient.start(videoEnabled) { candidate ->
+            Log.d(TAG, "ICE candidate callback fired")
             viewModelScope.launch {
                 try {
                     webRtcSignalingService.sendIceCandidate(callId, candidate.toData(myId))
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    Log.e(TAG, "sendIceCandidate failed", e)
+                }
+            }
+        }
+        // Listen for remote video track
+        webRtcClient.onRemoteVideoTrack = { track ->
+            Log.d(TAG, "Remote video track received in ViewModel")
+            _remoteVideoTrack.value = track
+        }
+        // Expose local video track for preview (poll until camera is ready)
+        if (videoEnabled) {
+            viewModelScope.launch {
+                repeat(20) { // up to 2 seconds
+                    val track = webRtcClient.localVideoTrack
+                    if (track != null) {
+                        _localVideoTrack.value = track
+                        Log.d(TAG, "Local video track ready")
+                        return@launch
+                    }
+                    delay(100)
+                }
+                Log.w(TAG, "Local video track not ready after 2s")
             }
         }
     }
 
     private fun createAndSendOffer(callId: String, myId: String) {
+        Log.d(TAG, "createAndSendOffer: callId=$callId")
         webRtcClient.createOffer { sdp ->
+            Log.d(TAG, "Offer created, sending to RTDB...")
             viewModelScope.launch {
                 try {
                     webRtcSignalingService.sendOffer(callId, sdp.toData(myId))
-                } catch (_: Exception) {}
+                    Log.d(TAG, "Offer sent successfully")
+                } catch (e: Exception) {
+                    Log.e(TAG, "sendOffer failed", e)
+                }
             }
         }
     }
@@ -262,7 +422,9 @@ class CallViewModel @Inject constructor(
                             viewModelScope.launch {
                                 try {
                                     webRtcSignalingService.sendAnswer(callId, answer.toData(myId))
-                                } catch (_: Exception) {}
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "sendAnswer failed", e)
+                                }
                             }
                         }
                     }
@@ -294,4 +456,3 @@ class CallViewModel @Inject constructor(
         }
     }
 }
-
