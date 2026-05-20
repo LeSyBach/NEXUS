@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -722,8 +723,8 @@ fun ConversationScreen(
                                 baseName.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
                             }
                             val isLastFromSender = if (!isMe) {
-                                val nextMsg = messagesState.data.getOrNull(index + 1)
-                                nextMsg == null || nextMsg.senderId != msg.senderId
+                                val prevMsg = messagesState.data.getOrNull(index - 1)
+                                prevMsg == null || prevMsg.senderId != msg.senderId
                             } else {
                                 false
                             }
@@ -748,6 +749,8 @@ fun ConversationScreen(
                                     time = timeStr,
                                     showDateSeparator = showDateSeparator,
                                     dateSeparatorText = msg.timestamp?.toDate()?.let { DateUtils.formatDateSeparator(it.time) } ?: "",
+                                    avatarInitial = senderInitial,
+                                    showAvatar = !isMe && isLastFromSender,
                                     onStartCall = {
                                         if (otherId.isNotEmpty()) onStartCall(otherId, msg.text, displayName)
                                     }
@@ -1062,9 +1065,14 @@ fun CallHistoryBubble(
     time: String,
     showDateSeparator: Boolean = false,
     dateSeparatorText: String = "",
+    avatarInitial: String = "",
+    showAvatar: Boolean = false,
     onStartCall: () -> Unit
 ) {
     val nc = MaterialTheme.nexusColors
+    val isDark = isSystemInDarkTheme()
+    val avatarSize = 28
+
     val isVideo = message.text == "video"
     val isMissed = message.duration == 0L
     val callLabel = if (isVideo) "Cuộc gọi video" else "Cuộc gọi thoại"
@@ -1076,21 +1084,12 @@ fun CallHistoryBubble(
         val secs = message.duration % 60
         if (mins > 0) "${mins} phút ${secs} giây" else "${secs} giây"
     }
-    val iconBgColor = when {
-        !isMissed -> NexusPrimary.copy(alpha = 0.12f)
-        isMe -> Color.Gray.copy(alpha = 0.15f)
-        else -> Color(0xFFEF4444).copy(alpha = 0.15f)
-    }
-    val iconTint = when {
-        !isMissed -> NexusPrimary
-        isMe -> Color.Gray
-        else -> Color(0xFFEF4444)
-    }
-    val titleColor = when {
-        !isMissed -> nc.textPrimary
-        isMe -> nc.textSecondary
-        else -> Color(0xFFEF4444)
-    }
+
+    val bubbleColor = if (isDark) Color(0xFF2A2A2A) else Color(0xFFE0E0E0)
+    val buttonColor = if (isDark) Color(0xFF383838) else Color(0xFFD0D0D0)
+    val primaryText = if (isDark) Color(0xFFE4E6E9) else Color(0xFF1A1A1A)
+    val secondaryText = if (isDark) Color(0xFFB0B3B8) else Color(0xFF65676B)
+    val iconTint = if (isDark) Color(0xFFB0B3B8) else Color(0xFF555555)
 
     Column(
         modifier = Modifier
@@ -1100,9 +1099,7 @@ fun CallHistoryBubble(
     ) {
         if (showDateSeparator && dateSeparatorText.isNotEmpty()) {
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 12.dp),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -1117,114 +1114,107 @@ fun CallHistoryBubble(
             }
         }
 
+        // Row: avatar (receiver only) + bubble
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start,
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = nc.surfaceElevated,
-                tonalElevation = 1.dp,
-                modifier = Modifier.widthIn(max = 300.dp)
+            if (!isMe) {
+                if (showAvatar) {
+                    MessageAvatar(initial = avatarInitial, size = avatarSize)
+                } else {
+                    Spacer(modifier = Modifier.size(avatarSize.dp))
+                }
+                Spacer(modifier = Modifier.width(6.dp))
+            }
+
+            // Bubble — wraps to info row width, button fills that width
+            Column(
+                modifier = Modifier
+                    .width(IntrinsicSize.Max)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(bubbleColor)
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(iconBgColor),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (isMissed && isMe) {
-                                // Missed outgoing: gray phone + X
-                                Icon(
-                                    Icons.Default.Call,
-                                    contentDescription = null,
-                                    tint = Color.Gray,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Icon(
-                                    Icons.Default.Close,
-                                    contentDescription = null,
-                                    tint = Color.Gray,
-                                    modifier = Modifier.size(12.dp)
-                                )
-                            } else if (isMissed && !isMe) {
-                                // Missed incoming: red phone + X
-                                Icon(
-                                    Icons.Default.Call,
-                                    contentDescription = null,
-                                    tint = Color(0xFFEF4444),
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Icon(
-                                    Icons.Default.Close,
-                                    contentDescription = null,
-                                    tint = Color(0xFFEF4444),
-                                    modifier = Modifier.size(12.dp)
-                                )
-                            } else {
-                                // Successful call
-                                Icon(
-                                    if (isVideo) Icons.Default.Videocam else Icons.Default.Call,
-                                    contentDescription = null,
-                                    tint = NexusPrimary,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = titleText,
-                                color = titleColor,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = subtitleText,
-                                color = nc.textSecondary,
-                                fontSize = 12.sp
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isMissed && !isMe) Color(0xFFFF3B30) else Color.Transparent
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (isMissed && !isMe) {
+                            Icon(Icons.Default.Call, null, tint = Color.White, modifier = Modifier.size(15.dp))
+                            Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(8.dp))
+                        } else if (isMissed && isMe) {
+                            Icon(Icons.Default.Call, null, tint = iconTint, modifier = Modifier.size(15.dp))
+                            Icon(Icons.Default.Close, null, tint = iconTint, modifier = Modifier.size(8.dp))
+                        } else {
+                            Icon(
+                                if (isVideo) Icons.Default.Videocam else Icons.Default.Call,
+                                null, tint = iconTint, modifier = Modifier.size(17.dp)
                             )
                         }
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    TextButton(
-                        onClick = onStartCall,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.textButtonColors(
-                            contentColor = NexusPrimary
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = titleText,
+                            color = if (isMissed && !isMe) Color(0xFFFF3B30) else primaryText,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
+                        Text(text = subtitleText, color = secondaryText, fontSize = 11.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // "Gọi lại"
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(buttonColor)
+                        .clickable { onStartCall() }
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
                     ) {
                         Icon(
                             if (isVideo) Icons.Default.Videocam else Icons.Default.Call,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
+                            null, tint = primaryText, modifier = Modifier.size(14.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Gọi lại", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text("Gọi lại", color = primaryText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
+
+            if (isMe) {
+                Spacer(modifier = Modifier.width(4.dp))
+            }
         }
 
-        // Timestamp row
-        if (!isMissed) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(end = if (isMe) 4.dp else 0.dp),
-                horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start
-            ) {
-                Text(
-                    text = time,
-                    color = nc.textTertiary,
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                )
-            }
+        // Timestamp
+        val timePadStart = if (!isMe) avatarSize.dp + 6.dp else 0.dp
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = timePadStart, end = if (isMe) 4.dp else 0.dp),
+            horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start
+        ) {
+            Text(
+                text = time,
+                color = nc.textTertiary,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+            )
         }
     }
 }

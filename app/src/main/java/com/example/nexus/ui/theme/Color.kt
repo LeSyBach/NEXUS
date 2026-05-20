@@ -34,7 +34,7 @@ val DarkOutline = Color(0xFF2D3B4E)
 val DarkOutlineVariant = Color(0xFF1F2937)
 
 // ── Light Theme Colors ──
-val LightBackground = Color(0xFFF5F7FA)
+val LightBackground = Color(0xFFE8EAED)
 val LightSurface = Color(0xFFFFFFFF)
 val LightSurfaceVariant = Color(0xFFF0F2F5)
 val LightCard = Color(0xFFFFFFFF)
