@@ -123,4 +123,37 @@ class ChatRepository @Inject constructor(
     suspend fun clearChatMessages(chatId: String) {
         firestoreService.clearChatMessages(chatId)
     }
+
+    suspend fun findChatIdByParticipants(otherUserId: String): String? {
+        val userId = authService.currentUserId ?: return null
+        return try {
+            firestoreService.findDirectChat(userId, otherUserId)?.id
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    suspend fun sendCallHistoryMessage(
+        chatId: String,
+        callType: String,
+        duration: Long,
+        callStatus: String
+    ): Resource<Unit> {
+        return try {
+            val userId = authService.currentUserId ?: return Resource.Error("User not logged in")
+            val currentUser = firestoreService.getUser(userId)
+            val message = Message(
+                senderId = userId,
+                senderName = currentUser?.username ?: "Unknown",
+                text = callType,
+                type = Constants.MESSAGE_TYPE_CALL,
+                duration = duration,
+                status = callStatus
+            )
+            firestoreService.sendMessage(chatId, message)
+            Resource.Success(Unit)
+        } catch (e: Exception) {
+            Resource.Error(e.message ?: "Failed to send call history")
+        }
+    }
 }

@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material3.*
@@ -579,6 +580,7 @@ fun ConversationScreen(
     val isOtherTyping = viewModel?.isTyping?.collectAsState()?.value ?: false
     var showMessageMenu by remember { mutableStateOf<Pair<String, Message>?>(null) }
     val clipboardManager = LocalClipboardManager.current
+    val otherId = otherUser?.uid ?: ""
 
     val isGroup = currentChat?.type == Constants.CHAT_TYPE_GROUP
     val displayName = if (isGroup) {
@@ -739,18 +741,31 @@ fun ConversationScreen(
                             // Only show status on the newest message, and only if I sent it
                             val showStatus = isMe && index == 0 && msg.status != "recalled"
 
-                            MessageBubble(
-                                text = msg.text,
-                                isMe = isMe,
-                                time = timeStr,
-                                status = if (showStatus) msg.status else "",
-                                showDateSeparator = showDateSeparator,
-                                dateSeparatorText = msg.timestamp?.toDate()?.let { DateUtils.formatDateSeparator(it.time) } ?: "",
-                                isRecalled = msg.status == "recalled",
-                                avatarInitial = senderInitial,
-                                showAvatar = !isMe && isLastFromSender,
-                                onLongClick = { showMessageMenu = Pair(chatId, msg) }
-                            )
+                            if (msg.type == Constants.MESSAGE_TYPE_CALL) {
+                                CallHistoryBubble(
+                                    message = msg,
+                                    isMe = isMe,
+                                    time = timeStr,
+                                    showDateSeparator = showDateSeparator,
+                                    dateSeparatorText = msg.timestamp?.toDate()?.let { DateUtils.formatDateSeparator(it.time) } ?: "",
+                                    onStartCall = {
+                                        if (otherId.isNotEmpty()) onStartCall(otherId, msg.text, displayName)
+                                    }
+                                )
+                            } else {
+                                MessageBubble(
+                                    text = msg.text,
+                                    isMe = isMe,
+                                    time = timeStr,
+                                    status = if (showStatus) msg.status else "",
+                                    showDateSeparator = showDateSeparator,
+                                    dateSeparatorText = msg.timestamp?.toDate()?.let { DateUtils.formatDateSeparator(it.time) } ?: "",
+                                    isRecalled = msg.status == "recalled",
+                                    avatarInitial = senderInitial,
+                                    showAvatar = !isMe && isLastFromSender,
+                                    onLongClick = { showMessageMenu = Pair(chatId, msg) }
+                                )
+                            }
                         }
                     }
                 }
@@ -1034,6 +1049,180 @@ fun MessageBubble(
                     color = if (status == "seen") NexusPrimary else nc.textTertiary,
                     fontSize = 10.sp,
                     modifier = Modifier.padding(horizontal = 4.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun CallHistoryBubble(
+    message: Message,
+    isMe: Boolean,
+    time: String,
+    showDateSeparator: Boolean = false,
+    dateSeparatorText: String = "",
+    onStartCall: () -> Unit
+) {
+    val nc = MaterialTheme.nexusColors
+    val isVideo = message.text == "video"
+    val isMissed = message.duration == 0L
+    val callLabel = if (isVideo) "Cuộc gọi video" else "Cuộc gọi thoại"
+    val titleText = if (isMissed) "Đã bỏ lỡ $callLabel" else callLabel
+    val subtitleText = if (isMissed) {
+        time
+    } else {
+        val mins = message.duration / 60
+        val secs = message.duration % 60
+        if (mins > 0) "${mins} phút ${secs} giây" else "${secs} giây"
+    }
+    val iconBgColor = when {
+        !isMissed -> NexusPrimary.copy(alpha = 0.12f)
+        isMe -> Color.Gray.copy(alpha = 0.15f)
+        else -> Color(0xFFEF4444).copy(alpha = 0.15f)
+    }
+    val iconTint = when {
+        !isMissed -> NexusPrimary
+        isMe -> Color.Gray
+        else -> Color(0xFFEF4444)
+    }
+    val titleColor = when {
+        !isMissed -> nc.textPrimary
+        isMe -> nc.textSecondary
+        else -> Color(0xFFEF4444)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        horizontalAlignment = if (isMe) Alignment.End else Alignment.Start
+    ) {
+        if (showDateSeparator && dateSeparatorText.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = dateSeparatorText,
+                    color = nc.textTertiary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier
+                        .background(nc.divider, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 14.dp, vertical = 5.dp)
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start
+        ) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = nc.surfaceElevated,
+                tonalElevation = 1.dp,
+                modifier = Modifier.widthIn(max = 300.dp)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(iconBgColor),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (isMissed && isMe) {
+                                // Missed outgoing: gray phone + X
+                                Icon(
+                                    Icons.Default.Call,
+                                    contentDescription = null,
+                                    tint = Color.Gray,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = null,
+                                    tint = Color.Gray,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            } else if (isMissed && !isMe) {
+                                // Missed incoming: red phone + X
+                                Icon(
+                                    Icons.Default.Call,
+                                    contentDescription = null,
+                                    tint = Color(0xFFEF4444),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = null,
+                                    tint = Color(0xFFEF4444),
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            } else {
+                                // Successful call
+                                Icon(
+                                    if (isVideo) Icons.Default.Videocam else Icons.Default.Call,
+                                    contentDescription = null,
+                                    tint = NexusPrimary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = titleText,
+                                color = titleColor,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = subtitleText,
+                                color = nc.textSecondary,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextButton(
+                        onClick = onStartCall,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = NexusPrimary
+                        )
+                    ) {
+                        Icon(
+                            if (isVideo) Icons.Default.Videocam else Icons.Default.Call,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Gọi lại", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+            }
+        }
+
+        // Timestamp row
+        if (!isMissed) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(end = if (isMe) 4.dp else 0.dp),
+                horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start
+            ) {
+                Text(
+                    text = time,
+                    color = nc.textTertiary,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                 )
             }
         }

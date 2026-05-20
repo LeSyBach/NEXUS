@@ -77,6 +77,7 @@ class CallViewModel @Inject constructor(
     private var answerJob: Job? = null
     private var iceJob: Job? = null
     private var isCleaningUp = false
+    private var callHistorySaved = false
 
     val currentUserId: String?
         get() = chatRepository.getCurrentUserId()
@@ -306,6 +307,28 @@ class CallViewModel @Inject constructor(
         isCleaningUp = true
         Log.d(TAG, "cleanup called")
 
+        // Save call history message before tearing down (only caller saves to avoid duplicates)
+        val signal = _currentSignal.value
+        val myId = currentUserId
+        if (signal != null && myId == signal.callerId && !callHistorySaved) {
+            callHistorySaved = true
+            val duration = _callDuration.value
+            val callStatus = if (duration > 0) "ended" else "missed"
+            viewModelScope.launch {
+                try {
+                    val chatId = chatRepository.findChatIdByParticipants(signal.receiverId)
+                    if (chatId != null) {
+                        chatRepository.sendCallHistoryMessage(chatId, signal.type, duration, callStatus)
+                        Log.d(TAG, "Call history saved: type=${signal.type}, duration=$duration, status=$callStatus")
+                    } else {
+                        Log.w(TAG, "Chat not found for call history")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to save call history", e)
+                }
+            }
+        }
+
         durationJob?.cancel()
         statusJob?.cancel()
         offerJob?.cancel()
@@ -337,6 +360,7 @@ class CallViewModel @Inject constructor(
         _remoteVideoTrack.value = null
         _localVideoTrack.value = null
         isCleaningUp = false
+        callHistorySaved = false
     }
 
     fun formatDuration(seconds: Long): String {

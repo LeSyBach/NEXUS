@@ -197,6 +197,7 @@ class FirestoreService @Inject constructor(
                 Constants.MESSAGE_TYPE_FILE -> "📎 ${message.fileName}"
                 Constants.MESSAGE_TYPE_VOICE -> "🎤 Tin nhắn thoại"
                 Constants.MESSAGE_TYPE_LOCATION -> "📍 Vị trí"
+                Constants.MESSAGE_TYPE_CALL -> if (message.text == "video") "📹 Cuộc gọi video" else "📞 Cuộc gọi thoại"
                 else -> message.text
             },
             senderId = message.senderId,

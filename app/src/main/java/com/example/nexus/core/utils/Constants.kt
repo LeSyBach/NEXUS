@@ -29,6 +29,7 @@ object Constants {
     const val MESSAGE_TYPE_VOICE = "voice"
     const val MESSAGE_TYPE_LOCATION = "location"
     const val MESSAGE_TYPE_SYSTEM = "system"
+    const val MESSAGE_TYPE_CALL = "call"
 
     // Message Status
     const val MESSAGE_STATUS_SENT = "sent"
