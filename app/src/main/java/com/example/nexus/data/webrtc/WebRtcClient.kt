@@ -29,6 +29,12 @@ import org.webrtc.SurfaceTextureHelper
 import org.webrtc.VideoCapturer
 import org.webrtc.VideoSource
 import org.webrtc.VideoTrack
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONArray
+import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
 @Singleton
@@ -40,17 +46,18 @@ class WebRtcClient(
 
         private const val STUN_URL_1 = "stun:stun.l.google.com:19302"
         private const val STUN_URL_2 = "stun:stun1.l.google.com:19302"
-        private const val TURN_URL_UDP = "turn:free.expressturn.com:3478"
-        private const val TURN_URL_TCP = "turn:free.expressturn.com:3478?transport=tcp"
-        private const val TURN_URL_TLS = "turns:free.expressturn.com:443?transport=tls"
-        private const val TURN_USERNAME = "000000002094554570"
-        private const val TURN_PASSWORD = "2yRsQwo76z2J4PU2FU9m/E/THm4="
+        private const val METERED_API_URL = "https://lsbach.metered.live/api/v1/turn/credentials?apiKey=0a63960f02b3726d2ec9c107009c47a223d7"
     }
 
     private val eglBase: EglBase = EglBase.create()
     private val peerConnectionFactory: PeerConnectionFactory by lazy { createPeerConnectionFactory() }
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private val httpClient = OkHttpClient.Builder()
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(5, TimeUnit.SECONDS)
+        .build()
 
+    private var cachedIceServers: List<PeerConnection.IceServer>? = null
     private var peerConnection: PeerConnection? = null
     private var audioSource: AudioSource? = null
     private var audioTrack: AudioTrack? = null
@@ -91,11 +98,13 @@ class WebRtcClient(
     val eglContext: EglBase.Context get() = eglBase.eglBaseContext
     private var isVideoCall = false
 
-    fun start(isVideoEnabled: Boolean, onIceCandidate: (IceCandidate) -> Unit) {
+    suspend fun start(isVideoEnabled: Boolean, onIceCandidate: (IceCandidate) -> Unit) {
         this.onIceCandidate = onIceCandidate
         this.isVideoCall = isVideoEnabled
         Log.d(TAG, "start() called, video=$isVideoEnabled, peerConn=${peerConnection != null}")
         if (peerConnection == null) {
+            // Fetch TURN credentials from Metered API before creating PeerConnection
+            fetchTurnCredentials()
             peerConnection = createPeerConnection()
             Log.d(TAG, "createPeerConnection returned: ${peerConnection != null}")
             try {
@@ -160,7 +169,10 @@ class WebRtcClient(
     }
 
     fun addIceCandidate(candidate: IceCandidate) {
-        Log.d(TAG, "Adding ICE candidate: ${candidate.sdpMid}")
+        val type = parseCandidateType(candidate.sdp)
+        val address = parseCandidateAddress(candidate.sdp)
+        Log.d(TAG, "🟢 Remote ICE candidate: type=$type, address=$address, mid=${candidate.sdpMid}")
+        Log.d(TAG, "   raw: ${candidate.sdp}")
         peerConnection?.addIceCandidate(candidate)
     }
 
@@ -231,17 +243,26 @@ class WebRtcClient(
     private fun createPeerConnection(): PeerConnection? {
         val observer = object : PeerConnection.Observer {
             override fun onIceCandidate(candidate: IceCandidate) {
-                Log.d(TAG, "Local ICE candidate: ${candidate.sdpMid}")
+                val type = parseCandidateType(candidate.sdp)
+                val address = parseCandidateAddress(candidate.sdp)
+                Log.d(TAG, "🔵 Local ICE candidate: type=$type, address=$address, mid=${candidate.sdpMid}")
+                Log.d(TAG, "   raw: ${candidate.sdp}")
                 onIceCandidate?.invoke(candidate)
             }
 
             override fun onIceConnectionChange(newState: PeerConnection.IceConnectionState) {
                 Log.d(TAG, "ICE connection state: $newState")
                 when (newState) {
-                    PeerConnection.IceConnectionState.CONNECTED -> Log.d(TAG, "ICE CONNECTED — audio/video should work")
-                    PeerConnection.IceConnectionState.COMPLETED -> Log.d(TAG, "ICE COMPLETED — all media flowing")
-                    PeerConnection.IceConnectionState.FAILED -> Log.e(TAG, "ICE FAILED — check TURN servers")
-                    PeerConnection.IceConnectionState.DISCONNECTED -> Log.w(TAG, "ICE DISCONNECTED")
+                    PeerConnection.IceConnectionState.CONNECTED -> {
+                        Log.d(TAG, "✅ ICE CONNECTED — audio/video should work")
+                        logCandidateSummary()
+                    }
+                    PeerConnection.IceConnectionState.COMPLETED -> {
+                        Log.d(TAG, "✅ ICE COMPLETED — all media flowing")
+                        logCandidateSummary()
+                    }
+                    PeerConnection.IceConnectionState.FAILED -> Log.e(TAG, "❌ ICE FAILED — check TURN servers")
+                    PeerConnection.IceConnectionState.DISCONNECTED -> Log.w(TAG, "⚠️ ICE DISCONNECTED")
                     else -> {}
                 }
             }
@@ -290,7 +311,19 @@ class WebRtcClient(
                 Log.d(TAG, "Signaling state: $newState")
             }
             override fun onIceConnectionReceivingChange(receiving: Boolean) = Unit
-            override fun onIceGatheringChange(newState: PeerConnection.IceGatheringState) = Unit
+            override fun onIceGatheringChange(newState: PeerConnection.IceGatheringState) {
+                Log.d(TAG, "ICE gathering state: $newState")
+            }
+            override fun onSelectedCandidatePairChanged(event: org.webrtc.CandidatePairChangeEvent) {
+                val local = event.local
+                val remote = event.remote
+                Log.d(TAG, "══════════════════════════════════════════════")
+                Log.d(TAG, "✅ SELECTED CANDIDATE PAIR:")
+                Log.d(TAG, "   Local:  type=${parseCandidateType(local.sdp)}, address=${parseCandidateAddress(local.sdp)}")
+                Log.d(TAG, "   Remote: type=${parseCandidateType(remote.sdp)}, address=${parseCandidateAddress(remote.sdp)}")
+                Log.d(TAG, "   reason: ${event.reason}")
+                Log.d(TAG, "══════════════════════════════════════════════")
+            }
             override fun onIceCandidatesRemoved(candidates: Array<IceCandidate>) = Unit
             override fun onRemoveStream(stream: MediaStream) = Unit
             override fun onDataChannel(channel: org.webrtc.DataChannel) = Unit
@@ -424,8 +457,65 @@ class WebRtcClient(
     }
 
     // ════════════════════════════════════════════════════════════════
-    // ICE SERVERS
+    // ICE SERVERS (Metered.ca REST API)
     // ════════════════════════════════════════════════════════════════
+
+    private suspend fun fetchTurnCredentials() {
+        if (cachedIceServers != null) {
+            Log.d(TAG, "Using cached ICE servers (${cachedIceServers!!.size})")
+            return
+        }
+        try {
+            Log.d(TAG, "Fetching TURN credentials from Metered API...")
+            val request = Request.Builder().url(METERED_API_URL).get().build()
+            val response = withContext(Dispatchers.IO) {
+                httpClient.newCall(request).execute()
+            }
+            if (!response.isSuccessful) {
+                Log.e(TAG, "Metered API error: ${response.code}")
+                return
+            }
+            val body = response.body?.string() ?: run {
+                Log.e(TAG, "Metered API empty response")
+                return
+            }
+            Log.d(TAG, "Metered API response: ${body.take(200)}...")
+            cachedIceServers = parseIceServersFromJson(body)
+            Log.d(TAG, "Parsed ${cachedIceServers!!.size} ICE servers from API")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to fetch TURN credentials", e)
+        }
+    }
+
+    private fun parseIceServersFromJson(json: String): List<PeerConnection.IceServer> {
+        val servers = mutableListOf<PeerConnection.IceServer>()
+        try {
+            val jsonArray = JSONArray(json)
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                val urls = mutableListOf<String>()
+                val urlsVal = obj.get("urls")
+                when (urlsVal) {
+                    is JSONArray -> {
+                        for (j in 0 until urlsVal.length()) urls.add(urlsVal.getString(j))
+                    }
+                    is String -> urls.add(urlsVal)
+                }
+                val username = obj.optString("username", "")
+                val credential = obj.optString("credential", "")
+                for (url in urls) {
+                    val builder = PeerConnection.IceServer.builder(url)
+                    if (username.isNotEmpty()) builder.setUsername(username)
+                    if (credential.isNotEmpty()) builder.setPassword(credential)
+                    servers.add(builder.createIceServer())
+                    Log.d(TAG, "  ICE: $url (user=${username.take(8)}...)")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to parse ICE servers JSON", e)
+        }
+        return servers
+    }
 
     private fun buildIceServers(includeTurn: Boolean = true): List<PeerConnection.IceServer> {
         val servers = mutableListOf<PeerConnection.IceServer>()
@@ -434,30 +524,13 @@ class WebRtcClient(
         servers.add(PeerConnection.IceServer.builder(STUN_URL_1).createIceServer())
         servers.add(PeerConnection.IceServer.builder(STUN_URL_2).createIceServer())
 
-        if (!includeTurn) return servers
-
-        // TURN servers for relay (when STUN fails)
-        val hasCredentials = TURN_USERNAME.isNotEmpty() && TURN_PASSWORD.isNotEmpty()
-        Log.d(TAG, "TURN credentials: hasCredentials=$hasCredentials, username=${TURN_USERNAME.take(5)}...")
-
-        try {
-            if (TURN_URL_UDP.isNotEmpty()) {
-                val builder = PeerConnection.IceServer.builder(TURN_URL_UDP)
-                if (hasCredentials) { builder.setUsername(TURN_USERNAME); builder.setPassword(TURN_PASSWORD) }
-                servers.add(builder.createIceServer())
-            }
-            if (TURN_URL_TCP.isNotEmpty()) {
-                val builder = PeerConnection.IceServer.builder(TURN_URL_TCP)
-                if (hasCredentials) { builder.setUsername(TURN_USERNAME); builder.setPassword(TURN_PASSWORD) }
-                servers.add(builder.createIceServer())
-            }
-            if (TURN_URL_TLS.isNotEmpty()) {
-                val builder = PeerConnection.IceServer.builder(TURN_URL_TLS)
-                if (hasCredentials) { builder.setUsername(TURN_USERNAME); builder.setPassword(TURN_PASSWORD) }
-                servers.add(builder.createIceServer())
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to build TURN servers", e)
+        // Add TURN servers from Metered API
+        val turnServers = cachedIceServers
+        if (includeTurn && turnServers != null) {
+            Log.d(TAG, "Adding ${turnServers.size} TURN servers from API")
+            servers.addAll(turnServers)
+        } else if (includeTurn && turnServers == null) {
+            Log.w(TAG, "No cached TURN servers available, using STUN only")
         }
 
         Log.d(TAG, "Total ICE servers: ${servers.size}")
@@ -509,6 +582,41 @@ class WebRtcClient(
         }
         @Suppress("DEPRECATION")
         return audioManager.isBluetoothA2dpOn || audioManager.isBluetoothScoOn
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // ICE CANDIDATE PARSING
+    // ════════════════════════════════════════════════════════════════
+
+    private fun parseCandidateType(sdp: String): String {
+        val regex = Regex("typ (host|srflx|relay|prflx)")
+        return regex.find(sdp)?.groupValues?.get(1) ?: "unknown"
+    }
+
+    private fun parseCandidateAddress(sdp: String): String {
+        // Format: foundation component transport priority address port typ ...
+        val parts = sdp.split(" ")
+        return if (parts.size >= 6) "${parts[4]}:${parts[5]}" else "unknown"
+    }
+
+    private fun logCandidateSummary() {
+        val pc = peerConnection ?: return
+        val stats = mutableMapOf<String, Int>()
+        pc.getStats { report ->
+            report.statsMap.values.forEach { entry ->
+                if (entry.type == "local-candidate" || entry.type == "remote-candidate") {
+                    val candType = entry.members["candidateType"] as? String ?: "unknown"
+                    val key = "${entry.type}:$candType"
+                    stats[key] = (stats[key] ?: 0) + 1
+                }
+            }
+            if (stats.isNotEmpty()) {
+                Log.d(TAG, "📊 ICE Candidate Summary:")
+                stats.forEach { (key, count) ->
+                    Log.d(TAG, "   $key × $count")
+                }
+            }
+        }
     }
 }
 

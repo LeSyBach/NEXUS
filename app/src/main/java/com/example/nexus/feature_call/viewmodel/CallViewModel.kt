@@ -363,7 +363,7 @@ class CallViewModel @Inject constructor(
     // WEBRTC ORCHESTRATION
     // ════════════════════════════════════════════════════════════════
 
-    private fun startWebRtc(callId: String, myId: String, videoEnabled: Boolean) {
+    private suspend fun startWebRtc(callId: String, myId: String, videoEnabled: Boolean) {
         Log.d(TAG, "startWebRtc: callId=$callId, video=$videoEnabled")
         webRtcClient.start(videoEnabled) { candidate ->
             Log.d(TAG, "ICE candidate callback fired")

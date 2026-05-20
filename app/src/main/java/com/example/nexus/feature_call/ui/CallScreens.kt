@@ -58,6 +58,7 @@ import com.example.nexus.feature_call.viewmodel.CallState
 import com.example.nexus.feature_call.viewmodel.CallViewModel
 import com.example.nexus.ui.theme.nexusColors
 import kotlinx.coroutines.delay
+import android.view.SurfaceHolder
 import org.webrtc.EglBase
 import org.webrtc.RendererCommon
 import org.webrtc.SurfaceViewRenderer
@@ -729,12 +730,19 @@ fun RemoteVideoRenderer(
                 init(eglContext, null)
                 setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT)
                 setMirror(false)
-                videoTrack.addSink(this)
+                // Wait for surface to be created before adding sink
+                holder.addCallback(object : SurfaceHolder.Callback {
+                    override fun surfaceCreated(holder: SurfaceHolder) {
+                        videoTrack.addSink(this@apply)
+                    }
+                    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
+                    override fun surfaceDestroyed(holder: SurfaceHolder) {
+                        videoTrack.removeSink(this@apply)
+                    }
+                })
             }
         },
-        update = { view ->
-            videoTrack.addSink(view)
-        },
+        update = { _ -> },
         modifier = modifier
     )
 }
@@ -751,12 +759,18 @@ fun LocalVideoRenderer(
                 init(eglContext, null)
                 setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL)
                 setMirror(true)
-                videoTrack.addSink(this)
+                holder.addCallback(object : SurfaceHolder.Callback {
+                    override fun surfaceCreated(holder: SurfaceHolder) {
+                        videoTrack.addSink(this@apply)
+                    }
+                    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
+                    override fun surfaceDestroyed(holder: SurfaceHolder) {
+                        videoTrack.removeSink(this@apply)
+                    }
+                })
             }
         },
-        update = { view ->
-            videoTrack.addSink(view)
-        },
+        update = { _ -> },
         modifier = modifier
     )
 }
