@@ -1,5 +1,12 @@
 package com.example.nexus.feature_chat.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.media.MediaPlayer
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -9,6 +16,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -23,6 +31,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Archive
@@ -30,13 +39,16 @@ import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.Videocam
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material3.*
@@ -47,26 +59,39 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import coil.compose.AsyncImage
 import com.example.nexus.core.utils.Constants
 import com.example.nexus.core.utils.DateUtils
 import com.example.nexus.core.utils.Resource
+import com.example.nexus.core.utils.createTempImageUri
 import com.example.nexus.data.model.Chat
 import com.example.nexus.data.model.Message
+import com.example.nexus.data.firebase.PlaybackState
 import com.example.nexus.feature_chat.viewmodel.ChatViewModel
+import com.example.nexus.feature_chat.viewmodel.UploadState
+import com.example.nexus.feature_chat.viewmodel.VoiceRecordingState
 import com.example.nexus.navigation.Screen
 import com.example.nexus.ui.components.NexusBottomBar
 
 import com.example.nexus.ui.theme.NexusPrimary
 import com.example.nexus.ui.theme.nexusColors
 import com.example.nexus.data.firebase.NexusMessagingService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.example.nexus.ui.theme.NexusSecondary
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -543,6 +568,42 @@ fun ConversationScreen(
     val otherUser = viewModel?.otherUser?.collectAsState()?.value
     val listState = rememberLazyListState()
 
+    val uploadState = viewModel?.uploadState?.collectAsState()?.value ?: UploadState.Idle
+    val pendingImageUri = viewModel?.pendingImageUri?.collectAsState()?.value
+    val context = LocalContext.current
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel?.sendImageMessage(chatId, uri, context)
+        }
+    }
+
+    var tempCameraUri by remember { mutableStateOf<Uri?>(null) }
+
+    val takePictureLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success: Boolean ->
+        if (success && tempCameraUri != null) {
+            viewModel?.sendImageMessage(chatId, tempCameraUri!!, context)
+        }
+        tempCameraUri = null
+    }
+
+    val voiceState = viewModel?.voiceState?.collectAsState()?.value ?: VoiceRecordingState.Idle
+    val voiceRecordTimeSec = viewModel?.voiceRecordTimeSec?.collectAsState()?.value ?: 0L
+    val voiceAmplitudes = viewModel?.voiceAmplitudes?.collectAsState()?.value ?: emptyList()
+    val playbackState = viewModel?.audioPlayerHelper?.state?.collectAsState()?.value ?: PlaybackState()
+
+    val recordAudioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted: Boolean ->
+        if (granted) {
+            viewModel?.startVoiceRecording(context)
+        }
+    }
+
     LaunchedEffect(chatId) {
         viewModel?.loadMessages(chatId)
     }
@@ -682,6 +743,16 @@ fun ConversationScreen(
                     }
                 }
                 is Resource.Success -> {
+                    // Upload progress bubble (appears at bottom since reverseLayout=true)
+                    if (uploadState is UploadState.Uploading && pendingImageUri != null) {
+                        item {
+                            UploadProgressBubble(
+                                imageUri = pendingImageUri,
+                                isMe = true
+                            )
+                        }
+                    }
+
                     if (messagesState.data.isEmpty()) {
                         item {
                             Box(modifier = Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) {
@@ -762,6 +833,8 @@ fun ConversationScreen(
                                     isRecalled = msg.status == "recalled",
                                     avatarInitial = senderInitial,
                                     showAvatar = !isMe && isLastFromSender,
+                                    messageType = msg.type,
+                                    duration = msg.duration,
                                     onLongClick = { showMessageMenu = Pair(chatId, msg) }
                                 )
                             }
@@ -835,90 +908,285 @@ fun ConversationScreen(
             )
         }
 
-        // ── Input Bar ──
+        // ── Input Area ──
         Box(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(nc.divider))
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(nc.background)
-                .padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(
-                onClick = { },
-                modifier = Modifier.size(44.dp)
-            ) {
-                Icon(Icons.Outlined.AddCircleOutline, contentDescription = "Add", tint = NexusPrimary, modifier = Modifier.size(24.dp))
-            }
-            IconButton(
-                onClick = { },
-                modifier = Modifier.size(44.dp)
-            ) {
-                Icon(Icons.Default.CameraAlt, contentDescription = "Camera", tint = NexusPrimary, modifier = Modifier.size(22.dp))
-            }
-            IconButton(
-                onClick = { },
-                modifier = Modifier.size(44.dp)
-            ) {
-                Icon(Icons.Default.Image, contentDescription = "Gallery", tint = NexusPrimary, modifier = Modifier.size(22.dp))
-            }
-            IconButton(
-                onClick = { },
-                modifier = Modifier.size(44.dp)
-            ) {
-                Icon(Icons.Default.Mic, contentDescription = "Mic", tint = NexusPrimary, modifier = Modifier.size(24.dp))
-            }
-
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(44.dp)
-                    .background(nc.cardBg, RoundedCornerShape(22.dp))
-                    .padding(horizontal = 14.dp),
-                contentAlignment = Alignment.CenterStart
-            ) {
+        when (voiceState) {
+            is VoiceRecordingState.Recording -> {
+                // Recording: Trash | Timer+Waveform | Pause+Send
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(nc.background)
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Box(modifier = Modifier.weight(1f)) {
-                        if (messageText.isEmpty()) {
-                            Text("Aa", color = nc.textSecondary, fontSize = 15.sp)
-                        }
-                        BasicTextField(
-                            value = messageText,
-                            onValueChange = { messageText = it },
-                            textStyle = TextStyle(color = nc.textPrimary, fontSize = 15.sp),
-                            cursorBrush = SolidColor(NexusPrimary),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
+                    // Cancel (trash)
                     IconButton(
-                        onClick = { },
-                        modifier = Modifier.size(32.dp)
+                        onClick = { viewModel?.cancelVoicePreview() },
+                        modifier = Modifier.size(40.dp)
                     ) {
-                        Icon(Icons.Default.EmojiEmotions, contentDescription = "Emoji", tint = NexusPrimary, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.Delete, contentDescription = "Hủy", tint = Color(0xFFFF3B30), modifier = Modifier.size(22.dp))
+                    }
+
+                    // Timer + Waveform
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFFF3B30))
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            val mins = voiceRecordTimeSec / 60
+                            val secs = voiceRecordTimeSec % 60
+                            Text(
+                                text = String.format("%d:%02d", mins, secs),
+                                color = nc.textPrimary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            )
+                        }
+
+                        // Waveform bars
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(1.5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            val bars = if (voiceAmplitudes.size >= 25) voiceAmplitudes.takeLast(25)
+                                       else List(25 - voiceAmplitudes.size) { 2 } + voiceAmplitudes
+                            for (amp in bars) {
+                                val height = (amp / 100f * 28).dp.coerceAtLeast(2.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .width(3.dp)
+                                        .height(height)
+                                        .clip(RoundedCornerShape(2.dp))
+                                        .background(Color(0xFFFF3B30).copy(alpha = 0.7f))
+                                )
+                            }
+                        }
+                    }
+
+                    // Pause (→ preview)
+                    IconButton(
+                        onClick = { viewModel?.stopVoiceRecording() },
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(Icons.Default.Pause, contentDescription = "Tạm dừng", tint = NexusPrimary, modifier = Modifier.size(22.dp))
+                    }
+
+                    // Send directly
+                    IconButton(
+                        onClick = { viewModel?.sendVoiceDirectly(chatId, context) },
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(NexusPrimary)
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Gửi", tint = Color.White, modifier = Modifier.size(20.dp))
                     }
                 }
             }
 
-            IconButton(
-                onClick = {
-                    if (messageText.isNotEmpty()) {
-                        viewModel?.sendMessage(chatId, messageText)
-                        messageText = ""
+            is VoiceRecordingState.Previewing -> {
+                // Preview mode: trash | re-record | play+slider | send
+                val preview = voiceState as VoiceRecordingState.Previewing
+                val previewDurationMs = preview.durationSec * 1000L
+                val currentPosMs = playbackState.currentPositionMs
+                val previewProgress = playbackState.progress
+                val mins = preview.durationSec / 60
+                val secs = preview.durationSec % 60
+                val durationText = String.format("%d:%02d", mins, secs)
+                val posMins = currentPosMs / 1000 / 60
+                val posSecs = (currentPosMs / 1000) % 60
+                val positionText = String.format("%d:%02d", posMins, posSecs)
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(nc.background)
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    // Trash - cancel
+                    IconButton(
+                        onClick = { viewModel?.cancelVoicePreview() },
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = "Hủy", tint = Color(0xFFFF3B30), modifier = Modifier.size(22.dp))
                     }
-                },
-                modifier = Modifier.size(44.dp)
-            ) {
-                val isSendEnabled = messageText.isNotEmpty()
-                Icon(
-                    if (isSendEnabled) Icons.AutoMirrored.Filled.Send else Icons.Default.ThumbUp,
-                    contentDescription = if (isSendEnabled) "Send" else "Like",
-                    tint = NexusPrimary,
-                    modifier = Modifier.size(24.dp)
-                )
+
+                    // Re-record
+                    IconButton(
+                        onClick = { viewModel?.reRecordVoice(context) },
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Ghi lại", tint = NexusPrimary, modifier = Modifier.size(22.dp))
+                    }
+
+                    // Play/Pause + Slider + time
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        IconButton(
+                            onClick = { viewModel?.toggleVoicePreview(context) },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                if (playbackState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (playbackState.isPlaying) "Tạm dừng" else "Phát",
+                                tint = NexusPrimary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Slider(
+                                value = previewProgress,
+                                onValueChange = { viewModel?.seekVoicePreview(it) },
+                                colors = SliderDefaults.colors(
+                                    thumbColor = NexusPrimary,
+                                    activeTrackColor = NexusPrimary,
+                                    inactiveTrackColor = nc.divider
+                                ),
+                                modifier = Modifier.height(24.dp)
+                            )
+                            Text(
+                                text = if (playbackState.isPlaying) "$positionText / $durationText" else durationText,
+                                color = nc.textSecondary,
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(start = 4.dp)
+                            )
+                        }
+                    }
+
+                    // Send button
+                    IconButton(
+                        onClick = { viewModel?.sendVoicePreview(chatId, context) },
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(NexusPrimary)
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Gửi", tint = Color.White, modifier = Modifier.size(20.dp))
+                    }
+                }
+            }
+
+            else -> {
+                // Normal input bar
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(nc.background)
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = { },
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Icon(Icons.Outlined.AddCircleOutline, contentDescription = "Add", tint = NexusPrimary, modifier = Modifier.size(24.dp))
+                    }
+                    IconButton(
+                        onClick = {
+                            val uri = context.createTempImageUri()
+                            tempCameraUri = uri
+                            takePictureLauncher.launch(uri)
+                        },
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Icon(Icons.Default.CameraAlt, contentDescription = "Camera", tint = NexusPrimary, modifier = Modifier.size(22.dp))
+                    }
+                    IconButton(
+                        onClick = {
+                            photoPickerLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        },
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Icon(Icons.Default.Image, contentDescription = "Gallery", tint = NexusPrimary, modifier = Modifier.size(22.dp))
+                    }
+                    IconButton(
+                        onClick = {
+                            val hasPermission = ContextCompat.checkSelfPermission(
+                                context, Manifest.permission.RECORD_AUDIO
+                            ) == PackageManager.PERMISSION_GRANTED
+                            if (hasPermission) {
+                                viewModel?.startVoiceRecording(context)
+                            } else {
+                                recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            }
+                        },
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Icon(Icons.Default.Mic, contentDescription = "Mic", tint = NexusPrimary, modifier = Modifier.size(24.dp))
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .background(nc.cardBg, RoundedCornerShape(22.dp))
+                            .padding(horizontal = 14.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(modifier = Modifier.weight(1f)) {
+                                if (messageText.isEmpty()) {
+                                    Text("Aa", color = nc.textSecondary, fontSize = 15.sp)
+                                }
+                                BasicTextField(
+                                    value = messageText,
+                                    onValueChange = { messageText = it },
+                                    textStyle = TextStyle(color = nc.textPrimary, fontSize = 15.sp),
+                                    cursorBrush = SolidColor(NexusPrimary),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                            IconButton(
+                                onClick = { },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(Icons.Default.EmojiEmotions, contentDescription = "Emoji", tint = NexusPrimary, modifier = Modifier.size(20.dp))
+                            }
+                        }
+                    }
+
+                    IconButton(
+                        onClick = {
+                            if (messageText.isNotEmpty()) {
+                                viewModel?.sendMessage(chatId, messageText)
+                                messageText = ""
+                            }
+                        },
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        val isSendEnabled = messageText.isNotEmpty()
+                        Icon(
+                            if (isSendEnabled) Icons.AutoMirrored.Filled.Send else Icons.Default.ThumbUp,
+                            contentDescription = if (isSendEnabled) "Send" else "Like",
+                            tint = NexusPrimary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
             }
         }
 
@@ -938,6 +1206,8 @@ fun MessageBubble(
     isRecalled: Boolean = false,
     avatarInitial: String = "",
     showAvatar: Boolean = false,
+    messageType: String = Constants.MESSAGE_TYPE_TEXT,
+    duration: Long = 0,
     onLongClick: (() -> Unit)? = null
 ) {
     val nc = MaterialTheme.nexusColors
@@ -988,33 +1258,216 @@ fun MessageBubble(
                 Spacer(modifier = Modifier.width(6.dp))
             }
 
-            Box(
-                modifier = Modifier
-                    .widthIn(max = 280.dp)
-                    .combinedClickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = {},
-                        onLongClick = onLongClick
-                    )
-                    .background(
-                        color = if (isMe) nc.sentBubble else nc.receivedBubble,
-                        shape = RoundedCornerShape(
-                            topStart = if (isMe) 18.dp else 4.dp,
-                            topEnd = if (isMe) 4.dp else 18.dp,
-                            bottomStart = 18.dp,
-                            bottomEnd = 18.dp
+            val bubbleShape = RoundedCornerShape(
+                topStart = if (isMe) 18.dp else 4.dp,
+                topEnd = if (isMe) 4.dp else 18.dp,
+                bottomStart = 18.dp,
+                bottomEnd = 18.dp
+            )
+
+            if (messageType == Constants.MESSAGE_TYPE_IMAGE && !isRecalled) {
+                // Image bubble
+                Box(
+                    modifier = Modifier
+                        .widthIn(max = 240.dp)
+                        .combinedClickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {},
+                            onLongClick = onLongClick
                         )
+                        .clip(bubbleShape)
+                        .background(
+                            color = if (isMe) nc.sentBubble else nc.receivedBubble,
+                            shape = bubbleShape
+                        )
+                ) {
+                    AsyncImage(
+                        model = text,
+                        contentDescription = "Hình ảnh",
+                        contentScale = ContentScale.FillWidth,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(bubbleShape)
                     )
-                    .padding(horizontal = 14.dp, vertical = 10.dp)
-            ) {
-                Text(
-                    text = if (isRecalled) "Tin nhắn đã được thu hồi" else text,
-                    color = if (isRecalled) nc.textTertiary else if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
-                    fontSize = 15.sp,
-                    lineHeight = 20.sp,
-                    fontStyle = if (isRecalled) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal
-                )
+                }
+            } else if (messageType == Constants.MESSAGE_TYPE_VOICE && !isRecalled) {
+                // Voice bubble with real playback
+                val context = LocalContext.current
+                var voiceIsPlaying by remember { mutableStateOf(false) }
+                var voicePositionMs by remember { mutableStateOf(0L) }
+                var voiceDurationMs by remember { mutableStateOf(duration * 1000L) }
+                var voiceProgress by remember { mutableStateOf(0f) }
+                val voicePlayer = remember { MediaPlayer() }
+                var isPrepared by remember { mutableStateOf(false) }
+
+                DisposableEffect(text) {
+                    voicePlayer.setOnPreparedListener { mp ->
+                        voiceDurationMs = mp.duration.toLong()
+                        isPrepared = true
+                    }
+                    voicePlayer.setOnCompletionListener {
+                        voiceIsPlaying = false
+                        voicePositionMs = 0L
+                        voiceProgress = 0f
+                    }
+                    voicePlayer.setDataSource(text)
+                    voicePlayer.prepareAsync()
+
+                    val progressScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+                    val job = progressScope.launch {
+                        while (true) {
+                            delay(100)
+                            if (voicePlayer.isPlaying) {
+                                voicePositionMs = voicePlayer.currentPosition.toLong()
+                                voiceDurationMs = voicePlayer.duration.toLong()
+                                voiceProgress = if (voiceDurationMs > 0) voicePositionMs.toFloat() / voiceDurationMs else 0f
+                            }
+                        }
+                    }
+
+                    onDispose {
+                        job.cancel()
+                        try {
+                            if (voicePlayer.isPlaying) voicePlayer.stop()
+                            voicePlayer.release()
+                        } catch (_: Exception) {}
+                    }
+                }
+
+                val minutes = duration / 60
+                val seconds = duration % 60
+                val durationText = if (minutes > 0) "${minutes}:${String.format("%02d", seconds)}" else "0:${String.format("%02d", seconds)}"
+                val posMins = voicePositionMs / 1000 / 60
+                val posSecs = (voicePositionMs / 1000) % 60
+                val positionText = String.format("%d:%02d", posMins, posSecs)
+
+                Box(
+                    modifier = Modifier
+                        .widthIn(max = 260.dp)
+                        .combinedClickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {},
+                            onLongClick = onLongClick
+                        )
+                        .background(
+                            color = if (isMe) nc.sentBubble else nc.receivedBubble,
+                            shape = bubbleShape
+                        )
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            // Play/Pause button
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isMe) nc.sentBubbleText.copy(alpha = 0.15f) else nc.receivedBubbleText.copy(alpha = 0.15f))
+                                    .clickable {
+                                        if (isPrepared) {
+                                            if (voiceIsPlaying) {
+                                                voicePlayer.pause()
+                                                voiceIsPlaying = false
+                                            } else {
+                                                voicePlayer.start()
+                                                voiceIsPlaying = true
+                                            }
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    if (voiceIsPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
+                                    contentDescription = if (voiceIsPlaying) "Dừng" else "Phát",
+                                    tint = if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            // Waveform bars
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val barCount = 20
+                                val barColor = if (isMe) nc.sentBubbleText.copy(alpha = 0.5f) else nc.receivedBubbleText.copy(alpha = 0.5f)
+                                val barColorActive = if (isMe) nc.sentBubbleText else nc.receivedBubbleText
+                                val heights = listOf(8, 14, 20, 16, 10, 18, 22, 14, 8, 16, 20, 12, 18, 14, 10, 22, 16, 8, 14, 20)
+                                val activeBar = (voiceProgress * barCount).toInt().coerceIn(0, barCount - 1)
+                                for (i in 0 until barCount) {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(3.dp)
+                                            .height(heights[i % heights.size].dp)
+                                            .clip(RoundedCornerShape(2.dp))
+                                            .background(if (i <= activeBar) barColorActive else barColor)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Slider + time
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Slider(
+                                value = voiceProgress,
+                                onValueChange = { fraction ->
+                                    if (isPrepared) {
+                                        voicePlayer.seekTo((fraction * voiceDurationMs).toInt())
+                                        voiceProgress = fraction
+                                    }
+                                },
+                                colors = SliderDefaults.colors(
+                                    thumbColor = if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
+                                    activeTrackColor = if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
+                                    inactiveTrackColor = if (isMe) nc.sentBubbleText.copy(alpha = 0.2f) else nc.receivedBubbleText.copy(alpha = 0.2f)
+                                ),
+                                modifier = Modifier.weight(1f).height(20.dp)
+                            )
+                            Text(
+                                text = if (voiceIsPlaying) positionText else durationText,
+                                color = if (isMe) nc.sentBubbleText.copy(alpha = 0.7f) else nc.receivedBubbleText.copy(alpha = 0.7f),
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
+            } else {
+                // Text bubble
+                Box(
+                    modifier = Modifier
+                        .widthIn(max = 280.dp)
+                        .combinedClickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {},
+                            onLongClick = onLongClick
+                        )
+                        .background(
+                            color = if (isMe) nc.sentBubble else nc.receivedBubble,
+                            shape = bubbleShape
+                        )
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                ) {
+                    Text(
+                        text = if (isRecalled) "Tin nhắn đã được thu hồi" else text,
+                        color = if (isRecalled) nc.textTertiary else if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
+                        fontSize = 15.sp,
+                        lineHeight = 20.sp,
+                        fontStyle = if (isRecalled) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal
+                    )
+                }
             }
 
             if (isMe) {
@@ -1231,6 +1684,76 @@ private fun MessageAvatar(initial: String, size: Int = 28, modifier: Modifier = 
             fontSize = (size / 2.2f).sp,
             fontWeight = FontWeight.Bold
         )
+    }
+}
+
+@Composable
+fun UploadProgressBubble(
+    imageUri: Uri,
+    isMe: Boolean
+) {
+    val nc = MaterialTheme.nexusColors
+    val bubbleShape = RoundedCornerShape(
+        topStart = if (isMe) 18.dp else 4.dp,
+        topEnd = if (isMe) 4.dp else 18.dp,
+        bottomStart = 18.dp,
+        bottomEnd = 18.dp
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        horizontalAlignment = if (isMe) Alignment.End else Alignment.Start
+    ) {
+        Row(
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Box(
+                modifier = Modifier
+                    .widthIn(max = 240.dp)
+                    .clip(bubbleShape)
+                    .background(
+                        color = if (isMe) nc.sentBubble else nc.receivedBubble,
+                        shape = bubbleShape
+                    )
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    AsyncImage(
+                        model = imageUri,
+                        contentDescription = null,
+                        contentScale = ContentScale.FillWidth,
+                        alpha = 0.5f,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(bubbleShape)
+                    )
+                    CircularProgressIndicator(
+                        color = NexusPrimary,
+                        strokeWidth = 3.dp,
+                        modifier = Modifier.size(40.dp)
+                    )
+                }
+            }
+            if (isMe) {
+                Spacer(modifier = Modifier.width(4.dp))
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(end = if (isMe) 4.dp else 0.dp),
+            horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start
+        ) {
+            Text(
+                text = "Đang tải lên...",
+                color = nc.textTertiary,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+        }
     }
 }
 

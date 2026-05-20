@@ -133,6 +133,73 @@ class ChatRepository @Inject constructor(
         }
     }
 
+    suspend fun sendImageMessage(chatId: String, imageUrl: String): Resource<Unit> {
+        return try {
+            val userId = authService.currentUserId ?: return Resource.Error("User not logged in")
+            val currentUser = firestoreService.getUser(userId)
+
+            val message = Message(
+                senderId = userId,
+                senderName = currentUser?.username ?: "Unknown",
+                text = imageUrl,
+                type = Constants.MESSAGE_TYPE_IMAGE
+            )
+            firestoreService.sendMessage(chatId, message)
+
+            val chat = firestoreService.getChat(chatId)
+            if (chat != null) {
+                val otherParticipants = chat.participants.filter { it != userId }
+                for (receiverId in otherParticipants) {
+                    notificationService.sendMessageNotification(
+                        receiverId = receiverId,
+                        senderName = currentUser?.displayName?.ifEmpty { currentUser.username } ?: "User",
+                        messageText = "📷 Hình ảnh",
+                        chatId = chatId,
+                        senderId = userId
+                    )
+                }
+            }
+
+            Resource.Success(Unit)
+        } catch (e: Exception) {
+            Resource.Error(e.message ?: "Failed to send image message")
+        }
+    }
+
+    suspend fun sendVoiceMessage(chatId: String, voiceUrl: String, durationSec: Long): Resource<Unit> {
+        return try {
+            val userId = authService.currentUserId ?: return Resource.Error("User not logged in")
+            val currentUser = firestoreService.getUser(userId)
+
+            val message = Message(
+                senderId = userId,
+                senderName = currentUser?.username ?: "Unknown",
+                text = voiceUrl,
+                type = Constants.MESSAGE_TYPE_VOICE,
+                duration = durationSec
+            )
+            firestoreService.sendMessage(chatId, message)
+
+            val chat = firestoreService.getChat(chatId)
+            if (chat != null) {
+                val otherParticipants = chat.participants.filter { it != userId }
+                for (receiverId in otherParticipants) {
+                    notificationService.sendMessageNotification(
+                        receiverId = receiverId,
+                        senderName = currentUser?.displayName?.ifEmpty { currentUser.username } ?: "User",
+                        messageText = "🎤 Tin nhắn thoại",
+                        chatId = chatId,
+                        senderId = userId
+                    )
+                }
+            }
+
+            Resource.Success(Unit)
+        } catch (e: Exception) {
+            Resource.Error(e.message ?: "Failed to send voice message")
+        }
+    }
+
     suspend fun sendCallHistoryMessage(
         chatId: String,
         callType: String,

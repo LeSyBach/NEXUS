@@ -4,8 +4,13 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.widget.Toast
+import androidx.core.content.FileProvider
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 
 /**
@@ -57,6 +62,18 @@ fun Context.getFileSize(uri: Uri): Long {
 
 fun <T> Flow<T>.handleErrors(onError: (Throwable) -> Unit): Flow<T> {
     return this.catch { e -> onError(e) }
+}
+
+/**
+ * Create a temporary image file in external cache and return its content Uri via FileProvider.
+ * Used as the output target for ActivityResultContracts.TakePicture().
+ */
+fun Context.createTempImageUri(): Uri {
+    val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+    val fileName = "NEXUS_${timeStamp}_"
+    val storageDir = externalCacheDir ?: cacheDir
+    val imageFile = File.createTempFile(fileName, ".jpg", storageDir)
+    return FileProvider.getUriForFile(this, "${packageName}.fileprovider", imageFile)
 }
 
 // ── General Extensions ──

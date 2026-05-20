@@ -1,9 +1,15 @@
 package com.example.nexus.feature_chat.viewmodel
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.nexus.core.utils.Constants
 import com.example.nexus.core.utils.Resource
+import com.example.nexus.data.firebase.AudioPlayerHelper
+import com.example.nexus.data.firebase.MediaUploader
+import com.example.nexus.data.firebase.PlaybackState
+import com.example.nexus.data.firebase.VoiceRecorderHelper
 import com.example.nexus.data.model.Chat
 import com.example.nexus.data.model.Message
 import com.example.nexus.data.model.User
@@ -19,9 +25,28 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+sealed class UploadState {
+    data object Idle : UploadState()
+    data class Uploading(val progress: Float = 0f) : UploadState()
+    data object Success : UploadState()
+    data class Error(val message: String) : UploadState()
+}
+
+sealed class VoiceRecordingState {
+    data object Idle : VoiceRecordingState()
+    data object Recording : VoiceRecordingState()
+    data class Previewing(
+        val localUri: Uri,
+        val durationSec: Long
+    ) : VoiceRecordingState()
+}
+
 @HiltViewModel
 class ChatViewModel @Inject constructor(
-    private val chatRepository: ChatRepository
+    private val chatRepository: ChatRepository,
+    private val mediaUploader: MediaUploader,
+    private val voiceRecorderHelper: VoiceRecorderHelper,
+    val audioPlayerHelper: AudioPlayerHelper
 ) : ViewModel() {
 
     private val _chatsState = MutableStateFlow<Resource<List<Chat>>>(Resource.Idle)
@@ -47,6 +72,24 @@ class ChatViewModel @Inject constructor(
 
     private val _clearChatSuccess = MutableSharedFlow<Boolean>()
     val clearChatSuccess = _clearChatSuccess.asSharedFlow()
+
+    private val _uploadState = MutableStateFlow<UploadState>(UploadState.Idle)
+    val uploadState: StateFlow<UploadState> = _uploadState
+
+    private val _pendingImageUri = MutableStateFlow<Uri?>(null)
+    val pendingImageUri: StateFlow<Uri?> = _pendingImageUri
+
+    private val _voiceState = MutableStateFlow<VoiceRecordingState>(VoiceRecordingState.Idle)
+    val voiceState: StateFlow<VoiceRecordingState> = _voiceState
+
+    private val _voiceRecordTimeSec = MutableStateFlow(0L)
+    val voiceRecordTimeSec: StateFlow<Long> = _voiceRecordTimeSec
+
+    private val _voiceAmplitudes = MutableStateFlow<List<Int>>(emptyList())
+    val voiceAmplitudes: StateFlow<List<Int>> = _voiceAmplitudes
+
+    private var recordTimerJob: Job? = null
+    private var amplitudeJob: Job? = null
 
     private val userCache = mutableMapOf<String, User>()
     private var typingJob: Job? = null
@@ -178,6 +221,178 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    fun sendImageMessage(chatId: String, uri: Uri, context: Context) {
+        _pendingImageUri.value = uri
+        _uploadState.value = UploadState.Uploading()
+
+        viewModelScope.launch {
+            try {
+                val imageUrl = mediaUploader.upload(context, uri)
+                if (imageUrl != null) {
+                    chatRepository.sendImageMessage(chatId, imageUrl)
+                    _uploadState.value = UploadState.Success
+                } else {
+                    _uploadState.value = UploadState.Error("Tải ảnh lên thất bại")
+                }
+            } catch (e: Exception) {
+                _uploadState.value = UploadState.Error(e.message ?: "Lỗi tải ảnh")
+            } finally {
+                _pendingImageUri.value = null
+                delay(500)
+                _uploadState.value = UploadState.Idle
+            }
+        }
+    }
+
+    fun resetUploadState() {
+        _uploadState.value = UploadState.Idle
+        _pendingImageUri.value = null
+    }
+
+    fun startVoiceRecording(context: Context) {
+        voiceRecorderHelper.startRecording(context)
+        _voiceState.value = VoiceRecordingState.Recording
+        _voiceRecordTimeSec.value = 0L
+        _voiceAmplitudes.value = emptyList()
+        recordTimerJob?.cancel()
+        recordTimerJob = viewModelScope.launch {
+            while (isActive) {
+                delay(1000)
+                _voiceRecordTimeSec.value++
+            }
+        }
+        amplitudeJob?.cancel()
+        amplitudeJob = viewModelScope.launch {
+            while (isActive) {
+                delay(80)
+                val amp = voiceRecorderHelper.getMaxAmplitude()
+                val normalized = (amp / 32767f * 100).toInt().coerceIn(0, 100)
+                val current = _voiceAmplitudes.value.toMutableList()
+                current.add(normalized)
+                if (current.size > 30) current.removeAt(0)
+                _voiceAmplitudes.value = current
+            }
+        }
+    }
+
+    fun stopVoiceRecording() {
+        recordTimerJob?.cancel()
+        recordTimerJob = null
+        amplitudeJob?.cancel()
+        amplitudeJob = null
+        val result = voiceRecorderHelper.stopRecording() ?: run {
+            _voiceState.value = VoiceRecordingState.Idle
+            return
+        }
+        val (audioUri, durationSec) = result
+        _voiceState.value = VoiceRecordingState.Previewing(localUri = audioUri, durationSec = durationSec)
+    }
+
+    fun toggleVoicePreview(context: Context) {
+        val state = _voiceState.value
+        if (state is VoiceRecordingState.Previewing) {
+            val playerState = audioPlayerHelper.state.value
+            if (!playerState.isPlaying && playerState.currentPositionMs == 0L) {
+                audioPlayerHelper.load(context, state.localUri)
+            }
+            audioPlayerHelper.togglePlayPause()
+        }
+    }
+
+    fun seekVoicePreview(fraction: Float) {
+        audioPlayerHelper.seekTo(fraction)
+    }
+
+    fun cancelVoicePreview() {
+        audioPlayerHelper.stop()
+        audioPlayerHelper.release()
+        val state = _voiceState.value
+        if (state is VoiceRecordingState.Previewing) {
+            val file = java.io.File(state.localUri.path ?: "")
+            file.delete()
+        }
+        _voiceState.value = VoiceRecordingState.Idle
+        _voiceRecordTimeSec.value = 0L
+        _voiceAmplitudes.value = emptyList()
+    }
+
+    fun reRecordVoice(context: Context) {
+        audioPlayerHelper.stop()
+        audioPlayerHelper.release()
+        val state = _voiceState.value
+        if (state is VoiceRecordingState.Previewing) {
+            val file = java.io.File(state.localUri.path ?: "")
+            file.delete()
+        }
+        _voiceState.value = VoiceRecordingState.Idle
+        startVoiceRecording(context)
+    }
+
+    fun sendVoicePreview(chatId: String, context: Context) {
+        val state = _voiceState.value
+        if (state !is VoiceRecordingState.Previewing) return
+
+        audioPlayerHelper.stop()
+        audioPlayerHelper.release()
+
+        _uploadState.value = UploadState.Uploading()
+        viewModelScope.launch {
+            try {
+                val voiceUrl = mediaUploader.upload(context, state.localUri, resourceType = "video")
+                if (voiceUrl != null) {
+                    chatRepository.sendVoiceMessage(chatId, voiceUrl, state.durationSec)
+                    _uploadState.value = UploadState.Success
+                    val file = java.io.File(state.localUri.path ?: "")
+                    file.delete()
+                } else {
+                    _uploadState.value = UploadState.Error("Tải voice lên thất bại")
+                }
+            } catch (e: Exception) {
+                _uploadState.value = UploadState.Error(e.message ?: "Lỗi tải voice")
+            } finally {
+                _voiceState.value = VoiceRecordingState.Idle
+                _voiceRecordTimeSec.value = 0L
+                delay(500)
+                _uploadState.value = UploadState.Idle
+            }
+        }
+    }
+
+    fun sendVoiceDirectly(chatId: String, context: Context) {
+        recordTimerJob?.cancel()
+        recordTimerJob = null
+        amplitudeJob?.cancel()
+        amplitudeJob = null
+        val result = voiceRecorderHelper.stopRecording() ?: run {
+            _voiceState.value = VoiceRecordingState.Idle
+            return
+        }
+        val (audioUri, durationSec) = result
+        _voiceState.value = VoiceRecordingState.Idle
+        _voiceRecordTimeSec.value = 0L
+        _voiceAmplitudes.value = emptyList()
+
+        _uploadState.value = UploadState.Uploading()
+        viewModelScope.launch {
+            try {
+                val voiceUrl = mediaUploader.upload(context, audioUri, resourceType = "video")
+                if (voiceUrl != null) {
+                    chatRepository.sendVoiceMessage(chatId, voiceUrl, durationSec)
+                    _uploadState.value = UploadState.Success
+                    val file = java.io.File(audioUri.path ?: "")
+                    file.delete()
+                } else {
+                    _uploadState.value = UploadState.Error("Tải voice lên thất bại")
+                }
+            } catch (e: Exception) {
+                _uploadState.value = UploadState.Error(e.message ?: "Lỗi tải voice")
+            } finally {
+                delay(500)
+                _uploadState.value = UploadState.Idle
+            }
+        }
+    }
+
     fun deleteMessage(chatId: String, messageId: String) {
         viewModelScope.launch {
             try {
@@ -233,6 +448,7 @@ class ChatViewModel @Inject constructor(
 
     fun clearConversationState() {
         stopObservingTyping()
+        cancelVoicePreview()
         _currentChat.value = null
         _otherUser.value = null
         _messagesState.value = Resource.Idle
