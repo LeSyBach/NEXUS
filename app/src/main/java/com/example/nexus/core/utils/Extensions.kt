@@ -76,6 +76,22 @@ fun Context.createTempImageUri(): Uri {
     return FileProvider.getUriForFile(this, "${packageName}.fileprovider", imageFile)
 }
 
+data class FileInfo(
+    val fileName: String,
+    val fileSizeBytes: Long,
+    val fileSizeReadable: String
+)
+
+fun Context.getFileInfo(uri: Uri): FileInfo? {
+    val name = getFileName(uri) ?: return null
+    val size = getFileSize(uri)
+    return FileInfo(
+        fileName = name,
+        fileSizeBytes = size,
+        fileSizeReadable = size.toReadableFileSize()
+    )
+}
+
 // ── General Extensions ──
 
 fun generateId(): String = UUID.randomUUID().toString()

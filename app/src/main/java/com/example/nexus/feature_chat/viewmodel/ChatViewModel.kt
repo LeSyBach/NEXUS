@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.nexus.core.utils.Constants
 import com.example.nexus.core.utils.Resource
+import com.example.nexus.core.utils.getFileInfo
 import com.example.nexus.data.firebase.AudioPlayerHelper
 import com.example.nexus.data.firebase.MediaUploader
 import com.example.nexus.data.firebase.PlaybackState
@@ -386,6 +387,32 @@ class ChatViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 _uploadState.value = UploadState.Error(e.message ?: "Lỗi tải voice")
+            } finally {
+                delay(500)
+                _uploadState.value = UploadState.Idle
+            }
+        }
+    }
+
+    fun sendFileMessage(chatId: String, uri: Uri, context: Context) {
+        val fileInfo = context.getFileInfo(uri) ?: return
+        if (fileInfo.fileSizeBytes > Constants.MAX_FILE_SIZE_MB * 1024 * 1024) {
+            _uploadState.value = UploadState.Error("File quá lớn (tối đa ${Constants.MAX_FILE_SIZE_MB}MB)")
+            return
+        }
+
+        _uploadState.value = UploadState.Uploading()
+        viewModelScope.launch {
+            try {
+                val fileUrl = mediaUploader.upload(context, uri, resourceType = "raw")
+                if (fileUrl != null) {
+                    chatRepository.sendFileMessage(chatId, fileUrl, fileInfo.fileName, fileInfo.fileSizeBytes)
+                    _uploadState.value = UploadState.Success
+                } else {
+                    _uploadState.value = UploadState.Error("Tải file lên thất bại")
+                }
+            } catch (e: Exception) {
+                _uploadState.value = UploadState.Error(e.message ?: "Lỗi tải file")
             } finally {
                 delay(500)
                 _uploadState.value = UploadState.Idle

@@ -200,6 +200,41 @@ class ChatRepository @Inject constructor(
         }
     }
 
+    suspend fun sendFileMessage(chatId: String, fileUrl: String, fileName: String, fileSize: Long): Resource<Unit> {
+        return try {
+            val userId = authService.currentUserId ?: return Resource.Error("User not logged in")
+            val currentUser = firestoreService.getUser(userId)
+
+            val message = Message(
+                senderId = userId,
+                senderName = currentUser?.username ?: "Unknown",
+                text = fileUrl,
+                type = Constants.MESSAGE_TYPE_FILE,
+                fileName = fileName,
+                fileSize = fileSize
+            )
+            firestoreService.sendMessage(chatId, message)
+
+            val chat = firestoreService.getChat(chatId)
+            if (chat != null) {
+                val otherParticipants = chat.participants.filter { it != userId }
+                for (receiverId in otherParticipants) {
+                    notificationService.sendMessageNotification(
+                        receiverId = receiverId,
+                        senderName = currentUser?.displayName?.ifEmpty { currentUser.username } ?: "User",
+                        messageText = "📎 $fileName",
+                        chatId = chatId,
+                        senderId = userId
+                    )
+                }
+            }
+
+            Resource.Success(Unit)
+        } catch (e: Exception) {
+            Resource.Error(e.message ?: "Failed to send file message")
+        }
+    }
+
     suspend fun sendCallHistoryMessage(
         chatId: String,
         callType: String,

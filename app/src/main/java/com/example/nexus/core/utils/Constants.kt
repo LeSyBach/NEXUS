@@ -69,6 +69,6 @@ object Constants {
     const val MAX_MESSAGE_LENGTH = 5000
     const val MAX_USERNAME_LENGTH = 30
     const val MIN_USERNAME_LENGTH = 3
-    const val MAX_FILE_SIZE_MB = 25
+    const val MAX_FILE_SIZE_MB = 100
     const val MESSAGES_PAGE_SIZE = 50
 }

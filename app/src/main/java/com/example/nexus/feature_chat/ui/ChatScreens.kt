@@ -1,6 +1,7 @@
 package com.example.nexus.feature_chat.ui
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.MediaPlayer
 import android.net.Uri
@@ -16,6 +17,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -38,6 +40,7 @@ import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PersonAdd
@@ -75,6 +78,7 @@ import com.example.nexus.core.utils.Constants
 import com.example.nexus.core.utils.DateUtils
 import com.example.nexus.core.utils.Resource
 import com.example.nexus.core.utils.createTempImageUri
+import com.example.nexus.core.utils.toReadableFileSize
 import com.example.nexus.data.model.Chat
 import com.example.nexus.data.model.Message
 import com.example.nexus.data.firebase.PlaybackState
@@ -591,6 +595,14 @@ fun ConversationScreen(
         tempCameraUri = null
     }
 
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel?.sendFileMessage(chatId, uri, context)
+        }
+    }
+
     val voiceState = viewModel?.voiceState?.collectAsState()?.value ?: VoiceRecordingState.Idle
     val voiceRecordTimeSec = viewModel?.voiceRecordTimeSec?.collectAsState()?.value ?: 0L
     val voiceAmplitudes = viewModel?.voiceAmplitudes?.collectAsState()?.value ?: emptyList()
@@ -835,6 +847,7 @@ fun ConversationScreen(
                                     showAvatar = !isMe && isLastFromSender,
                                     messageType = msg.type,
                                     duration = msg.duration,
+                                    message = msg,
                                     onLongClick = { showMessageMenu = Pair(chatId, msg) }
                                 )
                             }
@@ -913,16 +926,16 @@ fun ConversationScreen(
 
         when (voiceState) {
             is VoiceRecordingState.Recording -> {
-                // Recording: Trash | Timer+Waveform | Pause+Send
+                // Recording: Trash | Pause | Timer | Waveform | Send
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(nc.background)
                         .padding(horizontal = 8.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // Cancel (trash)
+                    // Trash - cancel recording
                     IconButton(
                         onClick = { viewModel?.cancelVoicePreview() },
                         modifier = Modifier.size(40.dp)
@@ -930,58 +943,43 @@ fun ConversationScreen(
                         Icon(Icons.Default.Delete, contentDescription = "Hủy", tint = Color(0xFFFF3B30), modifier = Modifier.size(22.dp))
                     }
 
-                    // Timer + Waveform
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFFFF3B30))
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            val mins = voiceRecordTimeSec / 60
-                            val secs = voiceRecordTimeSec % 60
-                            Text(
-                                text = String.format("%d:%02d", mins, secs),
-                                color = nc.textPrimary,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                            )
-                        }
-
-                        // Waveform bars
-                        Row(
-                            modifier = Modifier.weight(1f),
-                            horizontalArrangement = Arrangement.spacedBy(1.5.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            val bars = if (voiceAmplitudes.size >= 25) voiceAmplitudes.takeLast(25)
-                                       else List(25 - voiceAmplitudes.size) { 2 } + voiceAmplitudes
-                            for (amp in bars) {
-                                val height = (amp / 100f * 28).dp.coerceAtLeast(2.dp)
-                                Box(
-                                    modifier = Modifier
-                                        .width(3.dp)
-                                        .height(height)
-                                        .clip(RoundedCornerShape(2.dp))
-                                        .background(Color(0xFFFF3B30).copy(alpha = 0.7f))
-                                )
-                            }
-                        }
-                    }
-
                     // Pause (→ preview)
                     IconButton(
                         onClick = { viewModel?.stopVoiceRecording() },
-                        modifier = Modifier.size(40.dp)
+                        modifier = Modifier.size(44.dp)
                     ) {
-                        Icon(Icons.Default.Pause, contentDescription = "Tạm dừng", tint = NexusPrimary, modifier = Modifier.size(22.dp))
+                        Icon(Icons.Default.Pause, contentDescription = "Tạm dừng", tint = NexusPrimary, modifier = Modifier.size(24.dp))
+                    }
+
+                    // Timer
+                    val mins = voiceRecordTimeSec / 60
+                    val secs = voiceRecordTimeSec % 60
+                    Text(
+                        text = String.format("%d:%02d", mins, secs),
+                        color = nc.textPrimary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                    )
+
+                    // Waveform bars
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(1.5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        val bars = if (voiceAmplitudes.size >= 25) voiceAmplitudes.takeLast(25)
+                        else List(25 - voiceAmplitudes.size) { 2 } + voiceAmplitudes
+                        for (amp in bars) {
+                            val height = (amp / 100f * 28).dp.coerceAtLeast(2.dp)
+                            Box(
+                                modifier = Modifier
+                                    .width(3.dp)
+                                    .height(height)
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(Color(0xFFFF3B30).copy(alpha = 0.7f))
+                            )
+                        }
                     }
 
                     // Send directly
@@ -998,9 +996,8 @@ fun ConversationScreen(
             }
 
             is VoiceRecordingState.Previewing -> {
-                // Preview mode: trash | re-record | play+slider | send
+                // Preview mode: delete | re-record | continue | waveform seek | send
                 val preview = voiceState as VoiceRecordingState.Previewing
-                val previewDurationMs = preview.durationSec * 1000L
                 val currentPosMs = playbackState.currentPositionMs
                 val previewProgress = playbackState.progress
                 val mins = preview.durationSec / 60
@@ -1018,12 +1015,12 @@ fun ConversationScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    // Trash - cancel
+                    // Delete
                     IconButton(
                         onClick = { viewModel?.cancelVoicePreview() },
                         modifier = Modifier.size(40.dp)
                     ) {
-                        Icon(Icons.Default.Delete, contentDescription = "Hủy", tint = Color(0xFFFF3B30), modifier = Modifier.size(22.dp))
+                        Icon(Icons.Default.Delete, contentDescription = "Xóa", tint = Color(0xFFFF3B30), modifier = Modifier.size(22.dp))
                     }
 
                     // Re-record
@@ -1034,43 +1031,60 @@ fun ConversationScreen(
                         Icon(Icons.Default.Refresh, contentDescription = "Ghi lại", tint = NexusPrimary, modifier = Modifier.size(22.dp))
                     }
 
-                    // Play/Pause + Slider + time
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    // Continue (play/resume preview)
+                    IconButton(
+                        onClick = { viewModel?.toggleVoicePreview(context) },
+                        modifier = Modifier.size(40.dp)
                     ) {
-                        IconButton(
-                            onClick = { viewModel?.toggleVoicePreview(context) },
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Icon(
-                                if (playbackState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                contentDescription = if (playbackState.isPlaying) "Tạm dừng" else "Phát",
-                                tint = NexusPrimary,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
+                        Icon(
+                            if (playbackState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (playbackState.isPlaying) "Tạm dừng" else "Tiếp tục",
+                            tint = NexusPrimary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
 
-                        Column(modifier = Modifier.weight(1f)) {
-                            Slider(
-                                value = previewProgress,
-                                onValueChange = { viewModel?.seekVoicePreview(it) },
-                                colors = SliderDefaults.colors(
-                                    thumbColor = NexusPrimary,
-                                    activeTrackColor = NexusPrimary,
-                                    inactiveTrackColor = nc.divider
-                                ),
-                                modifier = Modifier.height(24.dp)
-                            )
-                            Text(
-                                text = if (playbackState.isPlaying) "$positionText / $durationText" else durationText,
-                                color = nc.textSecondary,
-                                fontSize = 11.sp,
-                                modifier = Modifier.padding(start = 4.dp)
+                    // Waveform seek (horizontal drag)
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .pointerInput(Unit) {
+                                detectDragGestures { change, _ ->
+                                    val fraction = (change.position.x / size.width).coerceIn(0f, 1f)
+                                    viewModel?.seekVoicePreview(fraction)
+                                }
+                            }
+                            .pointerInput(Unit) {
+                                detectTapGestures { offset ->
+                                    val fraction = (offset.x / size.width).coerceIn(0f, 1f)
+                                    viewModel?.seekVoicePreview(fraction)
+                                }
+                            },
+                        horizontalArrangement = Arrangement.spacedBy(1.5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val barCount = 28
+                        val bars = if (voiceAmplitudes.size >= barCount) voiceAmplitudes.takeLast(barCount)
+                        else List(barCount - voiceAmplitudes.size) { 2 } + voiceAmplitudes
+                        val activeBar = (previewProgress * barCount).toInt().coerceIn(0, barCount - 1)
+                        for (i in 0 until barCount) {
+                            val amp = bars[i]
+                            val height = (amp / 100f * 28).dp.coerceAtLeast(2.dp)
+                            Box(
+                                modifier = Modifier
+                                    .width(3.dp)
+                                    .height(height)
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(if (i <= activeBar) NexusPrimary else nc.divider)
                             )
                         }
                     }
+
+                    Text(
+                        text = if (playbackState.isPlaying) positionText else durationText,
+                        color = nc.textSecondary,
+                        fontSize = 11.sp
+                    )
 
                     // Send button
                     IconButton(
@@ -1095,10 +1109,10 @@ fun ConversationScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(
-                        onClick = { },
+                        onClick = { filePickerLauncher.launch(arrayOf("*/*")) },
                         modifier = Modifier.size(44.dp)
                     ) {
-                        Icon(Icons.Outlined.AddCircleOutline, contentDescription = "Add", tint = NexusPrimary, modifier = Modifier.size(24.dp))
+                        Icon(Icons.Outlined.AddCircleOutline, contentDescription = "Gửi file", tint = NexusPrimary, modifier = Modifier.size(24.dp))
                     }
                     IconButton(
                         onClick = {
@@ -1208,6 +1222,7 @@ fun MessageBubble(
     showAvatar: Boolean = false,
     messageType: String = Constants.MESSAGE_TYPE_TEXT,
     duration: Long = 0,
+    message: Message? = null,
     onLongClick: (() -> Unit)? = null
 ) {
     val nc = MaterialTheme.nexusColors
@@ -1391,9 +1406,28 @@ fun MessageBubble(
                                 )
                             }
 
-                            // Waveform bars
+                            // Waveform bars (horizontal drag to seek)
                             Row(
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .pointerInput(Unit) {
+                                        detectDragGestures { change, _ ->
+                                            val fraction = (change.position.x / size.width).coerceIn(0f, 1f)
+                                            if (isPrepared) {
+                                                voicePlayer.seekTo((fraction * voiceDurationMs).toInt())
+                                                voiceProgress = fraction
+                                            }
+                                        }
+                                    }
+                                    .pointerInput(Unit) {
+                                        detectTapGestures { offset ->
+                                            val fraction = (offset.x / size.width).coerceIn(0f, 1f)
+                                            if (isPrepared) {
+                                                voicePlayer.seekTo((fraction * voiceDurationMs).toInt())
+                                                voiceProgress = fraction
+                                            }
+                                        }
+                                    },
                                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -1414,32 +1448,78 @@ fun MessageBubble(
                             }
                         }
 
-                        // Slider + time
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        // Time display
+                        Text(
+                            text = if (voiceIsPlaying) "$positionText / $durationText" else durationText,
+                            color = if (isMe) nc.sentBubbleText.copy(alpha = 0.7f) else nc.receivedBubbleText.copy(alpha = 0.7f),
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+            } else if (messageType == Constants.MESSAGE_TYPE_FILE && !isRecalled) {
+                // File bubble
+                val context = LocalContext.current
+                val fileUrl = text
+                val fileName = message?.fileName ?: "File"
+                val fileSize = message?.fileSize ?: 0L
+
+                Box(
+                    modifier = Modifier
+                        .widthIn(max = 260.dp)
+                        .combinedClickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {
+                                try {
+                                    val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(fileUrl))
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {
+                                    android.widget.Toast.makeText(context, "Không thể mở file", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            onLongClick = onLongClick
+                        )
+                        .background(
+                            color = if (isMe) nc.sentBubble else nc.receivedBubble,
+                            shape = bubbleShape
+                        )
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isMe) nc.sentBubbleText.copy(alpha = 0.12f) else nc.receivedBubbleText.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Slider(
-                                value = voiceProgress,
-                                onValueChange = { fraction ->
-                                    if (isPrepared) {
-                                        voicePlayer.seekTo((fraction * voiceDurationMs).toInt())
-                                        voiceProgress = fraction
-                                    }
-                                },
-                                colors = SliderDefaults.colors(
-                                    thumbColor = if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
-                                    activeTrackColor = if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
-                                    inactiveTrackColor = if (isMe) nc.sentBubbleText.copy(alpha = 0.2f) else nc.receivedBubbleText.copy(alpha = 0.2f)
-                                ),
-                                modifier = Modifier.weight(1f).height(20.dp)
+                            Icon(
+                                Icons.Default.InsertDriveFile,
+                                contentDescription = null,
+                                tint = if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
+                                modifier = Modifier.size(22.dp)
                             )
+                        }
+
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = if (voiceIsPlaying) positionText else durationText,
-                                color = if (isMe) nc.sentBubbleText.copy(alpha = 0.7f) else nc.receivedBubbleText.copy(alpha = 0.7f),
-                                fontSize = 11.sp
+                                text = fileName,
+                                color = if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
                             )
+                            if (fileSize > 0) {
+                                Text(
+                                    text = fileSize.toReadableFileSize(),
+                                    color = if (isMe) nc.sentBubbleText.copy(alpha = 0.6f) else nc.receivedBubbleText.copy(alpha = 0.6f),
+                                    fontSize = 11.sp
+                                )
+                            }
                         }
                     }
                 }
