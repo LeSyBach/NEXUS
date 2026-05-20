@@ -62,12 +62,12 @@ import com.example.nexus.data.model.Message
 import com.example.nexus.feature_chat.viewmodel.ChatViewModel
 import com.example.nexus.navigation.Screen
 import com.example.nexus.ui.components.NexusBottomBar
-import com.example.nexus.ui.theme.GradientEnd
-import com.example.nexus.ui.theme.GradientStart
+
 import com.example.nexus.ui.theme.NexusPrimary
 import com.example.nexus.ui.theme.nexusColors
 import com.example.nexus.data.firebase.NexusMessagingService
 import kotlinx.coroutines.delay
+import com.example.nexus.ui.theme.NexusSecondary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,17 +85,17 @@ fun ChatListScreen(
     var pinnedChatIds by remember { mutableStateOf(setOf<String>()) }
     var showChatMenu by remember { mutableStateOf<Pair<String, String>?>(null) }
     Scaffold(
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = onNavigateToCreateGroup,
-                containerColor = Color(0xFF5A55FF),
-                contentColor = nc.sentBubbleText,
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.size(64.dp)
-            ) {
-                Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = "New Chat", modifier = Modifier.size(32.dp))
-            }
-        },
+//        floatingActionButton = {
+//            FloatingActionButton(
+//                onClick = onNavigateToCreateGroup,
+//                containerColor = NexusPrimary,
+//                contentColor = nc.sentBubbleText,
+//                shape = RoundedCornerShape(16.dp),
+//                modifier = Modifier.size(64.dp)
+//            ) {
+//                Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = "New Chat", modifier = Modifier.size(32.dp))
+//            }
+//        },
         bottomBar = {
             NexusBottomBar(
                 currentRoute = Screen.ChatList.route,
@@ -115,11 +115,7 @@ fun ChatListScreen(
                     text = "NEXUS",
                     fontSize = 28.sp,
                     fontWeight = FontWeight.Black,
-                    style = TextStyle(
-                        brush = Brush.linearGradient(
-                            colors = listOf(GradientStart, GradientEnd)
-                        )
-                    ),
+                    color = NexusPrimary,
                     letterSpacing = 1.sp,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
                 )
@@ -366,7 +362,7 @@ fun OnlineFriendItem(name: String) {
                     .padding(2.dp)
                     .border(
                         width = 2.5.dp,
-                        brush = Brush.linearGradient(listOf(Color(0xFFBB86FC), Color(0xFF00E5FF))),
+                        brush = Brush.linearGradient(listOf(NexusPrimary, NexusSecondary)),
                         shape = CircleShape
                     )
                     .padding(4.dp)
@@ -453,7 +449,7 @@ fun ChatItem(
                         )
                         .padding(if (isUnread) 2.dp else 0.dp)
                         .clip(CircleShape)
-                        .background(Brush.linearGradient(listOf(NexusPrimary.copy(alpha = 0.4f), nc.cardBg))),
+                        .background(nc.avatarBg),
                     contentAlignment = Alignment.Center
                 ) {
                     val initial = name.firstOrNull()?.toString() ?: "?"
@@ -619,7 +615,7 @@ fun ConversationScreen(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(NexusPrimary.copy(alpha = 0.6f), nc.cardBg))),
+                    .background(nc.avatarBg),
                 contentAlignment = Alignment.Center
             ) {
                 Text(avatarInitial, color = nc.textPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -1002,8 +998,7 @@ fun MessageBubble(
                         onLongClick = onLongClick
                     )
                     .background(
-                        brush = if (isMe) Brush.linearGradient(listOf(Color(0xFF5A55FF), Color(0xFF3B82F6)))
-                                else SolidColor(nc.receivedBubble),
+                        color = if (isMe) nc.sentBubble else nc.receivedBubble,
                         shape = RoundedCornerShape(
                             topStart = if (isMe) 18.dp else 4.dp,
                             topEnd = if (isMe) 4.dp else 18.dp,

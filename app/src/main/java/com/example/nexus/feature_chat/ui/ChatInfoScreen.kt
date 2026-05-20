@@ -29,6 +29,7 @@ import com.example.nexus.core.utils.DateUtils
 import com.example.nexus.feature_chat.viewmodel.ChatViewModel
 import com.example.nexus.ui.theme.NexusError
 import com.example.nexus.ui.theme.NexusPrimary
+import com.example.nexus.ui.theme.NexusSecondary
 import com.example.nexus.ui.theme.OnlineGreen
 import com.example.nexus.ui.theme.nexusColors
 
@@ -120,7 +121,7 @@ fun ChatInfoScreen(
                             Brush.linearGradient(
                                 listOf(
                                     NexusPrimary.copy(alpha = 0.6f),
-                                    Color(0xFFBB86FC).copy(alpha = 0.6f)
+                                    NexusSecondary.copy(alpha = 0.6f)
                                 )
                             )
                         ),

@@ -19,7 +19,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.TextStyle
+
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -65,7 +65,7 @@ fun ProfileScreen(
                     .height(180.dp)
                     .background(
                         Brush.verticalGradient(
-                            listOf(Color(0xFF5A55FF).copy(alpha = 0.6f), MaterialTheme.colorScheme.background)
+                            listOf(NexusPrimary.copy(alpha = 0.6f), MaterialTheme.colorScheme.background)
                         )
                     ),
                 contentAlignment = Alignment.BottomStart
@@ -74,9 +74,7 @@ fun ProfileScreen(
                     text = "HỒ SƠ",
                     fontSize = 28.sp,
                     fontWeight = FontWeight.Black,
-                    style = TextStyle(
-                        brush = Brush.linearGradient(colors = listOf(GradientStart, GradientEnd))
-                    ),
+                    color = NexusPrimary,
                     letterSpacing = 2.sp,
                     modifier = Modifier.padding(start = 24.dp, bottom = 16.dp)
                 )
@@ -101,7 +99,7 @@ fun ProfileScreen(
                             .clip(CircleShape)
                             .background(
                                 Brush.linearGradient(
-                                    listOf(Color(0xFF5A55FF), Color(0xFF00E5FF))
+                                    listOf(NexusPrimary, NexusSecondary)
                                 )
                             ),
                         contentAlignment = Alignment.Center
@@ -134,7 +132,7 @@ fun ProfileScreen(
                         )
                         if (!user?.bio.isNullOrEmpty()) {
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text(user?.bio ?: "", color = Color(0xFF00E5FF), fontSize = 13.sp)
+                            Text(user?.bio ?: "", color = NexusPrimary, fontSize = 13.sp)
                         }
                     }
 
@@ -283,7 +281,7 @@ fun EditProfileScreen(
                         .clip(CircleShape)
                         .background(
                             Brush.linearGradient(
-                                listOf(Color(0xFF5A55FF), Color(0xFF00E5FF))
+                                listOf(NexusPrimary, NexusSecondary)
                             )
                         ),
                     contentAlignment = Alignment.Center
