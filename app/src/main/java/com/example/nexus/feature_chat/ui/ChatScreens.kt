@@ -72,6 +72,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -852,6 +853,10 @@ fun ConversationScreen(
                                         }
                                     )
                                 } else {
+                                    val isOriginalRecalled = if (msg.replyTo != null) {
+                                        messagesState.data.find { it.id == msg.replyTo!!.messageId }?.status == "recalled"
+                                    } else false
+
                                     MessageBubble(
                                         text = msg.text,
                                         isMe = isMe,
@@ -860,6 +865,7 @@ fun ConversationScreen(
                                         showDateSeparator = showDateSeparator,
                                         dateSeparatorText = msg.timestamp?.toDate()?.let { DateUtils.formatDateSeparator(it.time) } ?: "",
                                         isRecalled = msg.status == "recalled",
+                                        isOriginalRecalled = isOriginalRecalled,
                                         avatarInitial = senderInitial,
                                         showAvatar = !isMe && isLastFromSender,
                                         messageType = msg.type,
@@ -1496,6 +1502,7 @@ fun MessageBubble(
     showDateSeparator: Boolean = false,
     dateSeparatorText: String = "",
     isRecalled: Boolean = false,
+    isOriginalRecalled: Boolean = false,
     avatarInitial: String = "",
     showAvatar: Boolean = false,
     messageType: String = Constants.MESSAGE_TYPE_TEXT,
@@ -1579,7 +1586,13 @@ fun MessageBubble(
                                 modifier = Modifier.size(12.dp)
                             )
                             Spacer(modifier = Modifier.width(3.dp))
-                            val headerText = if (replyTo.senderId == currentUserId) "Bạn đã trả lời chính mình" else "Bạn đã trả lời ${replyTo.senderName}"
+                            val headerText = if (isOriginalRecalled) {
+                                "Bạn đã trả lời một tin nhắn bị gỡ"
+                            } else if (replyTo.senderId == currentUserId) {
+                                "Bạn đã trả lời chính mình"
+                            } else {
+                                "Bạn đã trả lời ${replyTo.senderName}"
+                            }
                             Text(
                                 text = headerText,
                                 color = nc.textTertiary,
@@ -1588,7 +1601,9 @@ fun MessageBubble(
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
-                        val previewText = when (replyTo.type) {
+                        val previewText = if (isOriginalRecalled) {
+                            "Tin nhắn đã bị thu hồi"
+                        } else when (replyTo.type) {
                             Constants.MESSAGE_TYPE_IMAGE -> "📷 Hình ảnh"
                             Constants.MESSAGE_TYPE_VOICE -> "🎤 Tin nhắn thoại"
                             Constants.MESSAGE_TYPE_FILE -> "📎 Tệp"
@@ -1597,7 +1612,7 @@ fun MessageBubble(
                         Box(
                             modifier = Modifier
                                 .widthIn(max = 220.dp)
-                                .clickable(enabled = onQuoteClick != null && replyTo.messageId.isNotEmpty()) {
+                                .clickable(enabled = !isOriginalRecalled && onQuoteClick != null && replyTo.messageId.isNotEmpty()) {
                                     onQuoteClick?.invoke(replyTo.messageId)
                                 }
                                 .background(nc.surfaceVariant, RoundedCornerShape(18.dp))
@@ -1617,7 +1632,22 @@ fun MessageBubble(
                 // ── Main bubble (zIndex overlaps the reply quote) ──
                 val hasReply = message?.replyTo != null && !isRecalled
                 Box(modifier = if (hasReply) Modifier.offset(y = (-8).dp).zIndex(1f) else Modifier) {
-                    if (messageType == Constants.MESSAGE_TYPE_IMAGE && !isRecalled) {
+                    if (isRecalled) {
+                        // ── Recalled bubble: frozen, border-only, italic ──
+                        Box(
+                            modifier = Modifier
+                                .background(nc.surfaceVariant.copy(alpha = 0.4f), bubbleShape)
+                                .border(1.dp, nc.divider, bubbleShape)
+                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            Text(
+                                text = if (isMe) "Bạn đã thu hồi một tin nhắn" else "${message?.senderName ?: "Đối phương"} đã thu hồi một tin nhắn",
+                                color = nc.textTertiary,
+                                fontSize = 14.sp,
+                                fontStyle = FontStyle.Italic
+                            )
+                        }
+                    } else if (messageType == Constants.MESSAGE_TYPE_IMAGE && !isRecalled) {
                         val reactions = message?.reactions ?: emptyMap()
                         Box(modifier = Modifier.widthIn(max = 240.dp)) {
                             Box(
@@ -1912,7 +1942,7 @@ fun MessageBubble(
                                     color = if (isRecalled) nc.textTertiary else if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
                                     fontSize = 15.sp,
                                     lineHeight = 20.sp,
-                                    fontStyle = if (isRecalled) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal
+                                    fontStyle = FontStyle.Normal
                                 )
                             }
 

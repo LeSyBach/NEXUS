@@ -289,9 +289,9 @@ class FirestoreService @Inject constructor(
             .collection(Constants.COLLECTION_MESSAGES)
             .document(messageId)
             .update(mapOf(
-                "text" to "Tin nhắn đã được thu hồi",
-                "type" to Constants.MESSAGE_TYPE_SYSTEM,
-                "status" to "recalled"
+                "text" to "",
+                "status" to "recalled",
+                "reactions" to FieldValue.delete()
             ))
             .await()
     }
