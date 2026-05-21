@@ -7,6 +7,7 @@ import com.example.nexus.data.firebase.FirestoreService
 import com.example.nexus.data.firebase.NotificationService
 import com.example.nexus.data.model.Chat
 import com.example.nexus.data.model.Message
+import com.example.nexus.data.model.ReplyMessage
 import com.example.nexus.data.model.User
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -54,16 +55,17 @@ class ChatRepository @Inject constructor(
         emit(Resource.Error(e.message ?: "Unknown error"))
     }
 
-    suspend fun sendMessage(chatId: String, text: String): Resource<Unit> {
+    suspend fun sendMessage(chatId: String, text: String, replyTo: ReplyMessage? = null): Resource<Unit> {
         return try {
             val userId = authService.currentUserId ?: return Resource.Error("User not logged in")
             val currentUser = firestoreService.getUser(userId)
-            
+
             val message = Message(
                 senderId = userId,
                 senderName = currentUser?.username ?: "Unknown",
                 text = text,
-                type = "text"
+                type = "text",
+                replyTo = replyTo
             )
             firestoreService.sendMessage(chatId, message)
 
@@ -107,6 +109,18 @@ class ChatRepository @Inject constructor(
     suspend fun setTypingStatus(chatId: String, isTyping: Boolean) {
         val userId = authService.currentUserId ?: return
         firestoreService.updateTypingStatus(chatId, userId, isTyping)
+    }
+
+    suspend fun toggleReaction(chatId: String, messageId: String, emoji: String) {
+        val userId = authService.currentUserId ?: return
+        val message = firestoreService.getMessage(chatId, messageId) ?: return
+        val currentReaction = message.reactions[userId]
+
+        if (currentReaction == emoji) {
+            firestoreService.updateReaction(chatId, messageId, userId, null)
+        } else {
+            firestoreService.updateReaction(chatId, messageId, userId, emoji)
+        }
     }
 
     suspend fun getSharedContentCounts(chatId: String): Triple<Int, Int, Int> {

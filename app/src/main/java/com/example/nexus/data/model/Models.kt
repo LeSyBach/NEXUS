@@ -80,6 +80,7 @@ data class Message(
     val longitude: Double = 0.0,
     val status: String = "sent", // sent, delivered, seen
     val seenBy: List<String> = emptyList(),
+    val reactions: Map<String, String> = emptyMap(), // userId -> emoji
     val replyTo: ReplyMessage? = null,
     @ServerTimestamp
     val timestamp: Timestamp? = null,

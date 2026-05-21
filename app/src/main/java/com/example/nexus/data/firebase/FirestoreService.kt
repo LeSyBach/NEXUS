@@ -260,6 +260,29 @@ class FirestoreService @Inject constructor(
             .await()
     }
 
+    suspend fun getMessage(chatId: String, messageId: String): Message? {
+        return firestore.collection(Constants.COLLECTION_CHATS)
+            .document(chatId)
+            .collection(Constants.COLLECTION_MESSAGES)
+            .document(messageId)
+            .get()
+            .await()
+            .toObject(Message::class.java)
+    }
+
+    suspend fun updateReaction(chatId: String, messageId: String, userId: String, emoji: String?) {
+        val docRef = firestore.collection(Constants.COLLECTION_CHATS)
+            .document(chatId)
+            .collection(Constants.COLLECTION_MESSAGES)
+            .document(messageId)
+
+        if (emoji == null) {
+            docRef.update("reactions.$userId", FieldValue.delete()).await()
+        } else {
+            docRef.update("reactions.$userId", emoji).await()
+        }
+    }
+
     suspend fun recallMessage(chatId: String, messageId: String) {
         firestore.collection(Constants.COLLECTION_CHATS)
             .document(chatId)

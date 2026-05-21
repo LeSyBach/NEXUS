@@ -13,6 +13,7 @@ import com.example.nexus.data.firebase.PlaybackState
 import com.example.nexus.data.firebase.VoiceRecorderHelper
 import com.example.nexus.data.model.Chat
 import com.example.nexus.data.model.Message
+import com.example.nexus.data.model.ReplyMessage
 import com.example.nexus.data.model.User
 import com.example.nexus.data.repository.ChatRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -88,6 +89,9 @@ class ChatViewModel @Inject constructor(
 
     private val _voiceAmplitudes = MutableStateFlow<List<Int>>(emptyList())
     val voiceAmplitudes: StateFlow<List<Int>> = _voiceAmplitudes
+
+    private val _replyingToMessage = MutableStateFlow<Message?>(null)
+    val replyingToMessage: StateFlow<Message?> = _replyingToMessage
 
     private var recordTimerJob: Job? = null
     private var amplitudeJob: Job? = null
@@ -215,10 +219,49 @@ class ChatViewModel @Inject constructor(
 
     fun sendMessage(chatId: String, text: String) {
         if (text.isBlank()) return
+        val reply = _replyingToMessage.value?.let { msg ->
+            val previewText = when (msg.type) {
+                Constants.MESSAGE_TYPE_IMAGE -> "📷 Hình ảnh"
+                Constants.MESSAGE_TYPE_VOICE -> "🎤 Tin nhắn thoại"
+                Constants.MESSAGE_TYPE_FILE -> "📎 ${msg.fileName.ifEmpty { "Tệp" }}"
+                else -> msg.text
+            }
+            ReplyMessage(
+                messageId = msg.id,
+                text = previewText,
+                senderId = msg.senderId,
+                senderName = msg.senderName,
+                type = msg.type
+            )
+        }
+        _replyingToMessage.value = null
+
         viewModelScope.launch {
             try {
-                chatRepository.sendMessage(chatId, text.trim())
+                chatRepository.sendMessage(chatId, text.trim(), replyTo = reply)
             } catch (_: Exception) {}
+        }
+    }
+
+    fun setReplyingMessage(message: Message?) {
+        _replyingToMessage.value = message
+    }
+
+    fun toggleReaction(chatId: String, messageId: String, emoji: String) {
+        viewModelScope.launch {
+            try {
+                chatRepository.toggleReaction(chatId, messageId, emoji)
+            } catch (_: Exception) {}
+        }
+    }
+
+    suspend fun getUsersByIds(userIds: List<String>): List<User> {
+        return userIds.mapNotNull { id ->
+            userCache[id] ?: try {
+                val user = chatRepository.getUserById(id)
+                if (user != null) userCache[id] = user
+                user
+            } catch (_: Exception) { null }
         }
     }
 
@@ -480,6 +523,7 @@ class ChatViewModel @Inject constructor(
         _otherUser.value = null
         _messagesState.value = Resource.Idle
         _isTyping.value = false
+        _replyingToMessage.value = null
     }
 
     fun loadSharedContentCounts(chatId: String) {
