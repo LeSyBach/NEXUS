@@ -40,8 +40,8 @@ import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.InsertDriveFile
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PersonAdd
@@ -750,143 +750,246 @@ fun ConversationScreen(
         Box(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(nc.divider))
 
         // ── Messages ──
-        LazyColumn(
+        Box(
             modifier = Modifier
                 .weight(1f)
-                .fillMaxWidth(),
-            state = listState,
-            reverseLayout = true,
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                .fillMaxWidth()
         ) {
-            when (messagesState) {
-                is Resource.Loading -> {
-                    item {
-                        Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = NexusPrimary, strokeWidth = 2.dp)
-                        }
-                    }
-                }
-                is Resource.Success -> {
-                    // Upload progress bubble (appears at bottom since reverseLayout=true)
-                    if (uploadState is UploadState.Uploading && pendingImageUri != null) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize(),
+                state = listState,
+                reverseLayout = true,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                when (messagesState) {
+                    is Resource.Loading -> {
                         item {
-                            UploadProgressBubble(
-                                imageUri = pendingImageUri,
-                                isMe = true
-                            )
+                            Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(color = NexusPrimary, strokeWidth = 2.dp)
+                            }
                         }
                     }
+                    is Resource.Success -> {
+                        // Upload progress bubble (appears at bottom since reverseLayout=true)
+                        if (uploadState is UploadState.Uploading && pendingImageUri != null) {
+                            item {
+                                UploadProgressBubble(
+                                    imageUri = pendingImageUri,
+                                    isMe = true
+                                )
+                            }
+                        }
 
-                    if (messagesState.data.isEmpty()) {
-                        item {
-                            Box(modifier = Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(72.dp)
-                                            .clip(CircleShape)
-                                            .background(NexusPrimary.copy(alpha = 0.1f)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            Icons.Outlined.ChatBubbleOutline,
-                                            contentDescription = null,
-                                            tint = NexusPrimary.copy(alpha = 0.6f),
-                                            modifier = Modifier.size(36.dp)
-                                        )
+                        if (messagesState.data.isEmpty()) {
+                            item {
+                                Box(modifier = Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(72.dp)
+                                                .clip(CircleShape)
+                                                .background(NexusPrimary.copy(alpha = 0.1f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                Icons.Outlined.ChatBubbleOutline,
+                                                contentDescription = null,
+                                                tint = NexusPrimary.copy(alpha = 0.6f),
+                                                modifier = Modifier.size(36.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(16.dp))
+                                        Text("Chưa có tin nhắn nào", color = nc.textSecondary, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text("Gửi tin nhắn để bắt đầu trò chuyện!", color = nc.textSecondary, fontSize = 13.sp)
                                     }
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    Text("Chưa có tin nhắn nào", color = nc.textSecondary, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Text("Gửi tin nhắn để bắt đầu trò chuyện!", color = nc.textSecondary, fontSize = 13.sp)
+                                }
+                            }
+                        } else {
+                            items(messagesState.data.size) { index ->
+                                val msg = messagesState.data[index]
+                                val isMe = msg.senderId == currentUserId
+                                val timeStr = msg.timestamp?.toDate()?.let { DateUtils.formatMessageTime(it.time) } ?: ""
+                                val senderInitial = if (isMe) {
+                                    ""
+                                } else {
+                                    val baseName = msg.senderName.ifEmpty { displayName }
+                                    baseName.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
+                                }
+                                val isLastFromSender = if (!isMe) {
+                                    val prevMsg = messagesState.data.getOrNull(index - 1)
+                                    prevMsg == null || prevMsg.senderId != msg.senderId
+                                } else {
+                                    false
+                                }
+
+                                val showDateSeparator = if (index < messagesState.data.size - 1) {
+                                    val currDate = msg.timestamp?.toDate()
+                                    val nextDate = messagesState.data[index + 1].timestamp?.toDate()
+                                    currDate != null && nextDate != null &&
+                                        java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.getDefault()).format(currDate) !=
+                                        java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.getDefault()).format(nextDate)
+                                } else if (index == messagesState.data.size - 1) {
+                                    true
+                                } else false
+
+                                // Only show status on the newest message, and only if I sent it
+                                val showStatus = isMe && index == 0 && msg.status != "recalled"
+
+                                if (msg.type == Constants.MESSAGE_TYPE_CALL) {
+                                    CallHistoryBubble(
+                                        message = msg,
+                                        isMe = isMe,
+                                        time = timeStr,
+                                        showDateSeparator = showDateSeparator,
+                                        dateSeparatorText = msg.timestamp?.toDate()?.let { DateUtils.formatDateSeparator(it.time) } ?: "",
+                                        avatarInitial = senderInitial,
+                                        showAvatar = !isMe && isLastFromSender,
+                                        onStartCall = {
+                                            if (otherId.isNotEmpty()) onStartCall(otherId, msg.text, displayName)
+                                        }
+                                    )
+                                } else {
+                                    MessageBubble(
+                                        text = msg.text,
+                                        isMe = isMe,
+                                        time = timeStr,
+                                        status = if (showStatus) msg.status else "",
+                                        showDateSeparator = showDateSeparator,
+                                        dateSeparatorText = msg.timestamp?.toDate()?.let { DateUtils.formatDateSeparator(it.time) } ?: "",
+                                        isRecalled = msg.status == "recalled",
+                                        avatarInitial = senderInitial,
+                                        showAvatar = !isMe && isLastFromSender,
+                                        messageType = msg.type,
+                                        duration = msg.duration,
+                                        message = msg,
+                                        currentUserId = currentUserId,
+                                        onLongClick = { showMessageMenu = Pair(chatId, msg) },
+                                        onReply = {
+                                            viewModel?.setReplyingMessage(msg)
+                                            coroutineScope.launch { listState.animateScrollToItem(0) }
+                                        },
+                                        onReact = { emoji -> viewModel?.toggleReaction(chatId, msg.id, emoji) },
+                                        onReactionsClick = { reactions, msgId -> reactionsSheetState = Pair(reactions, msgId) },
+                                        onQuoteClick = { quoteId ->
+                                            val messages = (messagesState as? Resource.Success)?.data
+                                            if (messages != null) {
+                                                val index = messages.indexOfFirst { it.id == quoteId }
+                                                if (index >= 0) {
+                                                    coroutineScope.launch { listState.animateScrollToItem(index) }
+                                                }
+                                            }
+                                        }
+                                    )
                                 }
                             }
                         }
-                    } else {
-                        items(messagesState.data.size) { index ->
-                            val msg = messagesState.data[index]
-                            val isMe = msg.senderId == currentUserId
-                            val timeStr = msg.timestamp?.toDate()?.let { DateUtils.formatMessageTime(it.time) } ?: ""
-                            val senderInitial = if (isMe) {
-                                ""
-                            } else {
-                                val baseName = msg.senderName.ifEmpty { displayName }
-                                baseName.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
-                            }
-                            val isLastFromSender = if (!isMe) {
-                                val prevMsg = messagesState.data.getOrNull(index - 1)
-                                prevMsg == null || prevMsg.senderId != msg.senderId
-                            } else {
-                                false
-                            }
-
-                            val showDateSeparator = if (index < messagesState.data.size - 1) {
-                                val currDate = msg.timestamp?.toDate()
-                                val nextDate = messagesState.data[index + 1].timestamp?.toDate()
-                                currDate != null && nextDate != null &&
-                                    java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.getDefault()).format(currDate) !=
-                                    java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.getDefault()).format(nextDate)
-                            } else if (index == messagesState.data.size - 1) {
-                                true
-                            } else false
-
-                            // Only show status on the newest message, and only if I sent it
-                            val showStatus = isMe && index == 0 && msg.status != "recalled"
-
-                            if (msg.type == Constants.MESSAGE_TYPE_CALL) {
-                                CallHistoryBubble(
-                                    message = msg,
-                                    isMe = isMe,
-                                    time = timeStr,
-                                    showDateSeparator = showDateSeparator,
-                                    dateSeparatorText = msg.timestamp?.toDate()?.let { DateUtils.formatDateSeparator(it.time) } ?: "",
-                                    avatarInitial = senderInitial,
-                                    showAvatar = !isMe && isLastFromSender,
-                                    onStartCall = {
-                                        if (otherId.isNotEmpty()) onStartCall(otherId, msg.text, displayName)
-                                    }
-                                )
-                            } else {
-                                MessageBubble(
-                                    text = msg.text,
-                                    isMe = isMe,
-                                    time = timeStr,
-                                    status = if (showStatus) msg.status else "",
-                                    showDateSeparator = showDateSeparator,
-                                    dateSeparatorText = msg.timestamp?.toDate()?.let { DateUtils.formatDateSeparator(it.time) } ?: "",
-                                    isRecalled = msg.status == "recalled",
-                                    avatarInitial = senderInitial,
-                                    showAvatar = !isMe && isLastFromSender,
-                                    messageType = msg.type,
-                                    duration = msg.duration,
-                                    message = msg,
-                                    currentUserId = currentUserId,
-                                    onLongClick = { showMessageMenu = Pair(chatId, msg) },
-                                    onReply = { viewModel?.setReplyingMessage(msg) },
-                                    onReact = { emoji -> viewModel?.toggleReaction(chatId, msg.id, emoji) },
-                                    onReactionsClick = { reactions, msgId -> reactionsSheetState = Pair(reactions, msgId) },
-                                    onQuoteClick = { quoteId ->
-                                        val messages = (messagesState as? Resource.Success)?.data
-                                        if (messages != null) {
-                                            val index = messages.indexOfFirst { it.id == quoteId }
-                                            if (index >= 0) {
-                                                coroutineScope.launch { listState.animateScrollToItem(index) }
-                                            }
-                                        }
-                                    }
-                                )
+                    }
+                    is Resource.Error -> {
+                        item {
+                            Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                                Text("Lỗi tải tin nhắn", color = nc.textSecondary, fontSize = 14.sp)
                             }
                         }
                     }
+                    else -> {}
                 }
-                is Resource.Error -> {
-                    item {
-                        Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                            Text("Lỗi tải tin nhắn", color = nc.textSecondary, fontSize = 14.sp)
-                        }
+            }
+
+            // Scroll-to-bottom FAB
+            androidx.compose.animation.AnimatedVisibility(
+                visible = showScrollToBottom.value,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 8.dp)
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .size(40.dp),
+                    shape = CircleShape,
+                    color = nc.surfaceVariant,
+                    shadowElevation = 6.dp,
+                    tonalElevation = 2.dp
+                ) {
+                    Box(
+                        modifier = Modifier.clickable {
+                            coroutineScope.launch { listState.animateScrollToItem(0) }
+                        },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.ArrowDownward,
+                            contentDescription = "Cuộn xuống",
+                            tint = nc.textPrimary,
+                            modifier = Modifier.size(22.dp)
+                        )
                     }
                 }
-                else -> {}
+            }
+        }
+
+        Box(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(nc.divider))
+
+        // Reply preview bar
+        if (replyingToMessage != null) {
+            val replyPreviewText = when (replyingToMessage.type) {
+                Constants.MESSAGE_TYPE_IMAGE -> "📷 Hình ảnh"
+                Constants.MESSAGE_TYPE_VOICE -> "🎤 Tin nhắn thoại"
+                Constants.MESSAGE_TYPE_FILE -> "📎 ${replyingToMessage.fileName.ifEmpty { "Tệp" }}"
+                else -> replyingToMessage.text
+            }
+            val replyHeaderText = if (replyingToMessage.senderId == currentUserId) {
+                "Bạn đã trả lời chính mình"
+            } else {
+                "Bạn đã trả lời ${replyingToMessage.senderName}"
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(nc.background)
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(nc.cardBg, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(3.dp)
+                            .height(36.dp)
+                            .background(NexusPrimary.copy(alpha = 0.8f), RoundedCornerShape(2.dp))
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = replyHeaderText,
+                            color = NexusPrimary.copy(alpha = 0.85f),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = replyPreviewText,
+                            color = nc.textSecondary,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    IconButton(
+                        onClick = { viewModel?.setReplyingMessage(null) },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Hủy", tint = nc.textSecondary, modifier = Modifier.size(16.dp))
+                    }
+                }
             }
         }
 
@@ -1000,101 +1103,6 @@ fun ConversationScreen(
             )
         }
 
-        // ── Input Area ──
-        // Scroll-to-bottom FAB
-        AnimatedVisibility(
-            visible = showScrollToBottom.value,
-            enter = fadeIn(),
-            exit = fadeOut()
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(end = 16.dp, bottom = 4.dp),
-                contentAlignment = Alignment.CenterEnd
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(nc.cardBg)
-                        .border(1.dp, nc.divider, CircleShape)
-                        .clickable {
-                            coroutineScope.launch { listState.animateScrollToItem(0) }
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Default.KeyboardArrowDown,
-                        contentDescription = "Cuộn xuống",
-                        tint = nc.textPrimary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-            }
-        }
-
-        Box(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(nc.divider))
-
-        // Reply preview bar
-        if (replyingToMessage != null) {
-            val replyPreviewText = when (replyingToMessage.type) {
-                Constants.MESSAGE_TYPE_IMAGE -> "📷 Hình ảnh"
-                Constants.MESSAGE_TYPE_VOICE -> "🎤 Tin nhắn thoại"
-                Constants.MESSAGE_TYPE_FILE -> "📎 ${replyingToMessage.fileName.ifEmpty { "Tệp" }}"
-                else -> replyingToMessage.text
-            }
-            val replyHeaderText = if (replyingToMessage.senderId == currentUserId) {
-                "Bạn đã trả lời chính mình"
-            } else {
-                "Đang trả lời ${replyingToMessage.senderName}"
-            }
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(nc.background)
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(nc.cardBg, RoundedCornerShape(12.dp))
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .width(3.dp)
-                            .height(36.dp)
-                            .background(NexusPrimary, RoundedCornerShape(2.dp))
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = replyHeaderText,
-                            color = NexusPrimary,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = replyPreviewText,
-                            color = nc.textSecondary,
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    IconButton(
-                        onClick = { viewModel?.setReplyingMessage(null) },
-                        modifier = Modifier.size(28.dp)
-                    ) {
-                        Icon(Icons.Default.Close, contentDescription = "Hủy", tint = nc.textSecondary, modifier = Modifier.size(16.dp))
-                    }
-                }
-            }
-        }
 
         when (voiceState) {
             is VoiceRecordingState.Recording -> {
@@ -1707,87 +1715,88 @@ fun MessageBubble(
                                     currentUserId = currentUserId,
                                     onQuoteClick = onQuoteClick
                                 )
+                                Spacer(modifier = Modifier.height(6.dp))
                             }
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            // Play/Pause button
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(if (isMe) nc.sentBubbleText.copy(alpha = 0.15f) else nc.receivedBubbleText.copy(alpha = 0.15f))
-                                    .clickable {
-                                        if (isPrepared) {
-                                            if (voiceIsPlaying) {
-                                                voicePlayer.pause()
-                                                voiceIsPlaying = false
-                                            } else {
-                                                voicePlayer.start()
-                                                voiceIsPlaying = true
-                                            }
-                                        }
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    if (voiceIsPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
-                                    contentDescription = if (voiceIsPlaying) "Dừng" else "Phát",
-                                    tint = if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-
-                            // Waveform bars (horizontal drag to seek)
                             Row(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .pointerInput(Unit) {
-                                        detectDragGestures { change, _ ->
-                                            val fraction = (change.position.x / size.width).coerceIn(0f, 1f)
-                                            if (isPrepared) {
-                                                voicePlayer.seekTo((fraction * voiceDurationMs).toInt())
-                                                voiceProgress = fraction
-                                            }
-                                        }
-                                    }
-                                    .pointerInput(Unit) {
-                                        detectTapGestures { offset ->
-                                            val fraction = (offset.x / size.width).coerceIn(0f, 1f)
-                                            if (isPrepared) {
-                                                voicePlayer.seekTo((fraction * voiceDurationMs).toInt())
-                                                voiceProgress = fraction
-                                            }
-                                        }
-                                    },
-                                horizontalArrangement = Arrangement.spacedBy(2.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                val barCount = 20
-                                val barColor = if (isMe) nc.sentBubbleText.copy(alpha = 0.5f) else nc.receivedBubbleText.copy(alpha = 0.5f)
-                                val barColorActive = if (isMe) nc.sentBubbleText else nc.receivedBubbleText
-                                val heights = listOf(8, 14, 20, 16, 10, 18, 22, 14, 8, 16, 20, 12, 18, 14, 10, 22, 16, 8, 14, 20)
-                                val activeBar = (voiceProgress * barCount).toInt().coerceIn(0, barCount - 1)
-                                for (i in 0 until barCount) {
-                                    Box(
-                                        modifier = Modifier
-                                            .width(3.dp)
-                                            .height(heights[i % heights.size].dp)
-                                            .clip(RoundedCornerShape(2.dp))
-                                            .background(if (i <= activeBar) barColorActive else barColor)
+                                // Play/Pause button
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isMe) nc.sentBubbleText.copy(alpha = 0.15f) else nc.receivedBubbleText.copy(alpha = 0.15f))
+                                        .clickable {
+                                            if (isPrepared) {
+                                                if (voiceIsPlaying) {
+                                                    voicePlayer.pause()
+                                                    voiceIsPlaying = false
+                                                } else {
+                                                    voicePlayer.start()
+                                                    voiceIsPlaying = true
+                                                }
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        if (voiceIsPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
+                                        contentDescription = if (voiceIsPlaying) "Dừng" else "Phát",
+                                        tint = if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
-                            }
-                        }
 
-                        // Time display
-                        Text(
-                            text = if (voiceIsPlaying) "$positionText / $durationText" else durationText,
-                            color = if (isMe) nc.sentBubbleText.copy(alpha = 0.7f) else nc.receivedBubbleText.copy(alpha = 0.7f),
-                            fontSize = 11.sp
-                        )
-                    }
+                                // Waveform bars (horizontal drag to seek)
+                                Row(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .pointerInput(Unit) {
+                                            detectDragGestures { change, _ ->
+                                                val fraction = (change.position.x / size.width).coerceIn(0f, 1f)
+                                                if (isPrepared) {
+                                                    voicePlayer.seekTo((fraction * voiceDurationMs).toInt())
+                                                    voiceProgress = fraction
+                                                }
+                                            }
+                                        }
+                                        .pointerInput(Unit) {
+                                            detectTapGestures { offset ->
+                                                val fraction = (offset.x / size.width).coerceIn(0f, 1f)
+                                                if (isPrepared) {
+                                                    voicePlayer.seekTo((fraction * voiceDurationMs).toInt())
+                                                    voiceProgress = fraction
+                                                }
+                                            }
+                                        },
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    val barCount = 20
+                                    val barColor = if (isMe) nc.sentBubbleText.copy(alpha = 0.5f) else nc.receivedBubbleText.copy(alpha = 0.5f)
+                                    val barColorActive = if (isMe) nc.sentBubbleText else nc.receivedBubbleText
+                                    val heights = listOf(8, 14, 20, 16, 10, 18, 22, 14, 8, 16, 20, 12, 18, 14, 10, 22, 16, 8, 14, 20)
+                                    val activeBar = (voiceProgress * barCount).toInt().coerceIn(0, barCount - 1)
+                                    for (i in 0 until barCount) {
+                                        Box(
+                                            modifier = Modifier
+                                                .width(3.dp)
+                                                .height(heights[i % heights.size].dp)
+                                                .clip(RoundedCornerShape(2.dp))
+                                                .background(if (i <= activeBar) barColorActive else barColor)
+                                            )
+                                    }
+                                }
+                            }
+
+                            // Time display
+                            Text(
+                                text = if (voiceIsPlaying) "$positionText / $durationText" else durationText,
+                                color = if (isMe) nc.sentBubbleText.copy(alpha = 0.7f) else nc.receivedBubbleText.copy(alpha = 0.7f),
+                                fontSize = 11.sp
+                            )
+                        }
                     }
 
 
@@ -2216,37 +2225,48 @@ private fun QuotedMessagePreview(
     val headerText = if (replyTo.senderId == currentUserId) {
         "Bạn đã trả lời chính mình"
     } else {
-        "Đang trả lời ${replyTo.senderName}"
+        "Bạn đã trả lời ${replyTo.senderName}"
     }
-    Box(
+    val accentColor = if (isMe) nc.sentBubbleText.copy(alpha = 0.7f) else nc.receivedBubbleText.copy(alpha = 0.7f)
+    val bodyColor = if (isMe) nc.sentBubbleText.copy(alpha = 0.85f) else nc.receivedBubbleText.copy(alpha = 0.85f)
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(enabled = onQuoteClick != null && replyTo.messageId.isNotEmpty()) {
                 onQuoteClick?.invoke(replyTo.messageId)
             }
-            .background(
-                if (isMe) nc.sentBubbleText.copy(alpha = 0.08f) else nc.receivedBubbleText.copy(alpha = 0.08f),
-                RoundedCornerShape(6.dp)
-            )
-            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .padding(vertical = 2.dp)
     ) {
-        Column {
+        // Header: ← Bạn đã trả lời ...
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(bottom = 2.dp)
+        ) {
+            Icon(
+                Icons.Default.Reply,
+                contentDescription = null,
+                tint = accentColor,
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
             Text(
                 text = headerText,
-                color = NexusPrimary,
+                color = accentColor,
                 fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Normal,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(
-                text = bubbleText,
-                color = nc.textSecondary,
-                fontSize = 12.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
         }
+        // Quoted message text
+        Text(
+            text = bubbleText,
+            color = bodyColor,
+            fontSize = 13.sp,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 18.dp)
+        )
     }
 }
 

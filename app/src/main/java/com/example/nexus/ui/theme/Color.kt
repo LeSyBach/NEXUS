@@ -60,8 +60,8 @@ val OfflineGray = Color(0xFF6B7280)
 val TypingBlue = Color(0xFF60A5FA)
 
 // ── Chat Colors ──
-val SentBubbleDark = Color(0xFF2C9EE8)
-val SentBubbleLight = Color(0xFF2C9EE8)
+val SentBubbleDark = NexusPrimary
+val SentBubbleLight = NexusPrimary
 val ReceivedBubbleDark = Color(0xFF1E293B)
 val ReceivedBubbleLight = Color(0xFFE5E7EB)
 val ChatInputDark = Color(0xFF1A2332)
