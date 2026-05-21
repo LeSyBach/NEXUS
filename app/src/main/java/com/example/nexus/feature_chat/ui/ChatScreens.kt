@@ -1682,16 +1682,16 @@ fun MessageBubble(
                                     Box(
                                         modifier = Modifier
                                             .align(Alignment.BottomEnd)
-                                            .offset(x = 4.dp, y = 12.dp)
+                                            .offset(x = 2.dp, y = 10.dp)
                                             .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
                                             .background(nc.background, RoundedCornerShape(10.dp))
                                             .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
-                                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                                            .padding(horizontal = 4.dp, vertical = 1.dp)
                                     ) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(displayEmoji, fontSize = 12.sp)
+                                            Text(displayEmoji, fontSize = 14.sp)
                                             if (count > 1) {
-                                                Text(text = count.toString(), color = nc.textSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 2.dp))
+                                                Text(text = count.toString(), color = nc.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 1.dp))
                                             }
                                         }
                                     }
@@ -1842,16 +1842,16 @@ fun MessageBubble(
                                     Box(
                                         modifier = Modifier
                                             .align(Alignment.BottomEnd)
-                                            .offset(x = 4.dp, y = 12.dp)
+                                            .offset(x = 2.dp, y = 10.dp)
                                             .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
                                             .background(nc.background, RoundedCornerShape(10.dp))
                                             .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
-                                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                                            .padding(horizontal = 4.dp, vertical = 1.dp)
                                     ) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(displayEmoji, fontSize = 12.sp)
+                                            Text(displayEmoji, fontSize = 14.sp)
                                             if (count > 1) {
-                                                Text(text = count.toString(), color = nc.textSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 2.dp))
+                                                Text(text = count.toString(), color = nc.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 1.dp))
                                             }
                                         }
                                     }
@@ -1923,16 +1923,16 @@ fun MessageBubble(
                                     Box(
                                         modifier = Modifier
                                             .align(Alignment.BottomEnd)
-                                            .offset(x = 4.dp, y = 12.dp)
+                                            .offset(x = 2.dp, y = 10.dp)
                                             .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
                                             .background(nc.background, RoundedCornerShape(10.dp))
                                             .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
-                                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                                            .padding(horizontal = 4.dp, vertical = 1.dp)
                                     ) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(displayEmoji, fontSize = 12.sp)
+                                            Text(displayEmoji, fontSize = 14.sp)
                                             if (count > 1) {
-                                                Text(text = count.toString(), color = nc.textSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 2.dp))
+                                                Text(text = count.toString(), color = nc.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 1.dp))
                                             }
                                         }
                                     }
@@ -1973,16 +1973,16 @@ fun MessageBubble(
                                     Box(
                                         modifier = Modifier
                                             .align(Alignment.BottomEnd)
-                                            .offset(x = 4.dp, y = 12.dp)
+                                            .offset(x = 2.dp, y = 10.dp)
                                             .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
                                             .background(nc.background, RoundedCornerShape(10.dp))
                                             .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
-                                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                                            .padding(horizontal = 4.dp, vertical = 1.dp)
                                     ) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(displayEmoji, fontSize = 12.sp)
+                                            Text(displayEmoji, fontSize = 14.sp)
                                             if (count > 1) {
-                                                Text(text = count.toString(), color = nc.textSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 2.dp))
+                                                Text(text = count.toString(), color = nc.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 1.dp))
                                             }
                                         }
                                     }
