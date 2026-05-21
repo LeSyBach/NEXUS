@@ -76,6 +76,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
 import com.example.nexus.core.utils.Constants
@@ -1509,6 +1510,7 @@ fun MessageBubble(
 ) {
     val nc = MaterialTheme.nexusColors
     val avatarSize = 28
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1517,9 +1519,7 @@ fun MessageBubble(
     ) {
         if (showDateSeparator && dateSeparatorText.isNotEmpty()) {
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 12.dp),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -1528,10 +1528,7 @@ fun MessageBubble(
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier
-                        .background(
-                            nc.divider,
-                            RoundedCornerShape(12.dp)
-                        )
+                        .background(nc.divider, RoundedCornerShape(12.dp))
                         .padding(horizontal = 14.dp, vertical = 5.dp)
                 )
             }
@@ -1544,11 +1541,7 @@ fun MessageBubble(
         ) {
             if (!isMe) {
                 if (showAvatar) {
-                    MessageAvatar(
-                        initial = avatarInitial,
-                        size = avatarSize,
-                        modifier = Modifier.align(Alignment.Bottom)
-                    )
+                    MessageAvatar(initial = avatarInitial, size = avatarSize, modifier = Modifier.align(Alignment.Bottom))
                 } else {
                     Spacer(modifier = Modifier.size(avatarSize.dp).align(Alignment.Bottom))
                 }
@@ -1562,458 +1555,393 @@ fun MessageBubble(
                 bottomEnd = 18.dp
             )
 
-            if (messageType == Constants.MESSAGE_TYPE_IMAGE && !isRecalled) {
-                // Image bubble
-                val reactions = message?.reactions ?: emptyMap()
-
-                Box(
-                    modifier = Modifier.widthIn(max = 240.dp)
-                ) {
-                    Box(
+            // ── Stacking group: reply above, bubble below (overlapping) ──
+            Column(
+                horizontalAlignment = if (isMe) Alignment.End else Alignment.Start
+            ) {
+                // ── Reply section (rendered ABOVE the bubble) ──
+                val replyTo = message?.replyTo
+                if (replyTo != null && !isRecalled) {
+                    Column(
                         modifier = Modifier
-                            .combinedClickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = {},
-                                onLongClick = onLongClick
-                            )
-                            .clip(bubbleShape)
-                            .background(
-                                color = if (isMe) nc.sentBubble else nc.receivedBubble,
-                                shape = bubbleShape
-                            )
-                            .then(if (reactions.isNotEmpty()) Modifier.padding(bottom = 18.dp) else Modifier)
+                            .padding(bottom = 4.dp)
+                            .padding(horizontal = if (messageType == Constants.MESSAGE_TYPE_IMAGE) 4.dp else 0.dp),
+                        horizontalAlignment = if (isMe) Alignment.End else Alignment.Start
                     ) {
-                        Column {
-                            if (message?.replyTo != null) {
-                                Box(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-                                    QuotedMessagePreview(
-                                        replyTo = message.replyTo,
-                                        isMe = isMe,
-                                        nc = nc,
-                                        currentUserId = currentUserId,
-                                        onQuoteClick = onQuoteClick
-                                    )
-                                }
-                            }
-                            AsyncImage(
-                                model = text,
-                                contentDescription = "Hình ảnh",
-                                contentScale = ContentScale.FillWidth,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(bubbleShape)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(start = 6.dp, bottom = 2.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Reply,
+                                contentDescription = null,
+                                tint = nc.textTertiary,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            val headerText = if (replyTo.senderId == currentUserId) "Bạn đã trả lời chính mình" else "Bạn đã trả lời ${replyTo.senderName}"
+                            Text(
+                                text = headerText,
+                                color = nc.textTertiary,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
-                    }
-
-                    if (reactions.isNotEmpty()) {
-                        val displayEmoji = reactions.values.groupBy { e: String -> e }.maxByOrNull { entry -> entry.value.size }?.key ?: reactions.values.first()
-                        val count = reactions.size
+                        val previewText = when (replyTo.type) {
+                            Constants.MESSAGE_TYPE_IMAGE -> "📷 Hình ảnh"
+                            Constants.MESSAGE_TYPE_VOICE -> "🎤 Tin nhắn thoại"
+                            Constants.MESSAGE_TYPE_FILE -> "📎 Tệp"
+                            else -> replyTo.text
+                        }
                         Box(
                             modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .offset(x = 4.dp, y = 8.dp)
-                                .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
-                                .background(nc.background, RoundedCornerShape(10.dp))
-                                .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
-                                .padding(horizontal = 5.dp, vertical = 2.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(displayEmoji, fontSize = 12.sp)
-                                if (count > 1) {
-                                    Text(
-                                        text = count.toString(),
-                                        color = nc.textSecondary,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.padding(start = 2.dp)
-                                    )
+                                .widthIn(max = 220.dp)
+                                .clickable(enabled = onQuoteClick != null && replyTo.messageId.isNotEmpty()) {
+                                    onQuoteClick?.invoke(replyTo.messageId)
                                 }
-                            }
-                        }
-                    }
-                }
-            } else if (messageType == Constants.MESSAGE_TYPE_VOICE && !isRecalled) {
-                // Voice bubble with real playback
-                val context = LocalContext.current
-                var voiceIsPlaying by remember { mutableStateOf(false) }
-                var voicePositionMs by remember { mutableStateOf(0L) }
-                var voiceDurationMs by remember { mutableStateOf(duration * 1000L) }
-                var voiceProgress by remember { mutableStateOf(0f) }
-                val voicePlayer = remember { MediaPlayer() }
-                var isPrepared by remember { mutableStateOf(false) }
-
-                DisposableEffect(text) {
-                    voicePlayer.setOnPreparedListener { mp ->
-                        voiceDurationMs = mp.duration.toLong()
-                        isPrepared = true
-                    }
-                    voicePlayer.setOnCompletionListener {
-                        voiceIsPlaying = false
-                        voicePositionMs = 0L
-                        voiceProgress = 0f
-                    }
-                    voicePlayer.setDataSource(text)
-                    voicePlayer.prepareAsync()
-
-                    val progressScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-                    val job = progressScope.launch {
-                        while (true) {
-                            delay(100)
-                            if (voicePlayer.isPlaying) {
-                                voicePositionMs = voicePlayer.currentPosition.toLong()
-                                voiceDurationMs = voicePlayer.duration.toLong()
-                                voiceProgress = if (voiceDurationMs > 0) voicePositionMs.toFloat() / voiceDurationMs else 0f
-                            }
-                        }
-                    }
-
-                    onDispose {
-                        job.cancel()
-                        try {
-                            if (voicePlayer.isPlaying) voicePlayer.stop()
-                            voicePlayer.release()
-                        } catch (_: Exception) {}
-                    }
-                }
-
-                val minutes = duration / 60
-                val seconds = duration % 60
-                val durationText = if (minutes > 0) "${minutes}:${String.format("%02d", seconds)}" else "0:${String.format("%02d", seconds)}"
-                val posMins = voicePositionMs / 1000 / 60
-                val posSecs = (voicePositionMs / 1000) % 60
-                val positionText = String.format("%d:%02d", posMins, posSecs)
-
-                val reactions = message?.reactions ?: emptyMap()
-
-                Box(
-                    modifier = Modifier.widthIn(max = 260.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .combinedClickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = {},
-                                onLongClick = onLongClick
-                            )
-                            .background(
-                                color = if (isMe) nc.sentBubble else nc.receivedBubble,
-                                shape = bubbleShape
-                            )
-                            .then(if (reactions.isNotEmpty()) Modifier.padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 26.dp) else Modifier.padding(horizontal = 12.dp, vertical = 10.dp))
-                    ) {
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                .background(nc.surfaceVariant, RoundedCornerShape(18.dp))
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
                         ) {
-                            if (message?.replyTo != null) {
-                                QuotedMessagePreview(
-                                    replyTo = message.replyTo,
-                                    isMe = isMe,
-                                    nc = nc,
-                                    currentUserId = currentUserId,
-                                    onQuoteClick = onQuoteClick
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                            }
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            Text(
+                                text = previewText,
+                                color = nc.textSecondary,
+                                fontSize = 13.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+
+                // ── Main bubble (zIndex overlaps the reply quote) ──
+                val hasReply = message?.replyTo != null && !isRecalled
+                Box(modifier = if (hasReply) Modifier.offset(y = (-8).dp).zIndex(1f) else Modifier) {
+                    if (messageType == Constants.MESSAGE_TYPE_IMAGE && !isRecalled) {
+                        val reactions = message?.reactions ?: emptyMap()
+                        Box(modifier = Modifier.widthIn(max = 240.dp)) {
+                            Box(
+                                modifier = Modifier
+                                    .combinedClickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null,
+                                        onClick = {},
+                                        onLongClick = onLongClick
+                                    )
+                                    .clip(bubbleShape)
+                                    .background(color = if (isMe) nc.sentBubble else nc.receivedBubble, shape = bubbleShape)
+                                    .then(if (reactions.isNotEmpty()) Modifier.padding(bottom = 18.dp) else Modifier)
                             ) {
-                                // Play/Pause button
+                                AsyncImage(
+                                    model = text,
+                                    contentDescription = "Hình ảnh",
+                                    contentScale = ContentScale.FillWidth,
+                                    modifier = Modifier.fillMaxWidth().clip(bubbleShape)
+                                )
+                            }
+                            if (reactions.isNotEmpty()) {
+                                val displayEmoji = reactions.values.groupBy { e: String -> e }.maxByOrNull { entry -> entry.value.size }?.key ?: reactions.values.first()
+                                val count = reactions.size
                                 Box(
                                     modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(if (isMe) nc.sentBubbleText.copy(alpha = 0.15f) else nc.receivedBubbleText.copy(alpha = 0.15f))
-                                        .clickable {
-                                            if (isPrepared) {
-                                                if (voiceIsPlaying) {
-                                                    voicePlayer.pause()
-                                                    voiceIsPlaying = false
-                                                } else {
-                                                    voicePlayer.start()
-                                                    voiceIsPlaying = true
-                                                }
-                                            }
-                                        },
-                                    contentAlignment = Alignment.Center
+                                        .align(Alignment.BottomEnd)
+                                        .offset(x = 4.dp, y = 8.dp)
+                                        .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
+                                        .background(nc.background, RoundedCornerShape(10.dp))
+                                        .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
+                                        .padding(horizontal = 5.dp, vertical = 2.dp)
                                 ) {
-                                    Icon(
-                                        if (voiceIsPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
-                                        contentDescription = if (voiceIsPlaying) "Dừng" else "Phát",
-                                        tint = if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-
-                                // Waveform bars (horizontal drag to seek)
-                                Row(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .pointerInput(Unit) {
-                                            detectDragGestures { change, _ ->
-                                                val fraction = (change.position.x / size.width).coerceIn(0f, 1f)
-                                                if (isPrepared) {
-                                                    voicePlayer.seekTo((fraction * voiceDurationMs).toInt())
-                                                    voiceProgress = fraction
-                                                }
-                                            }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(displayEmoji, fontSize = 12.sp)
+                                        if (count > 1) {
+                                            Text(text = count.toString(), color = nc.textSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 2.dp))
                                         }
-                                        .pointerInput(Unit) {
-                                            detectTapGestures { offset ->
-                                                val fraction = (offset.x / size.width).coerceIn(0f, 1f)
-                                                if (isPrepared) {
-                                                    voicePlayer.seekTo((fraction * voiceDurationMs).toInt())
-                                                    voiceProgress = fraction
-                                                }
-                                            }
-                                        },
-                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    val barCount = 20
-                                    val barColor = if (isMe) nc.sentBubbleText.copy(alpha = 0.5f) else nc.receivedBubbleText.copy(alpha = 0.5f)
-                                    val barColorActive = if (isMe) nc.sentBubbleText else nc.receivedBubbleText
-                                    val heights = listOf(8, 14, 20, 16, 10, 18, 22, 14, 8, 16, 20, 12, 18, 14, 10, 22, 16, 8, 14, 20)
-                                    val activeBar = (voiceProgress * barCount).toInt().coerceIn(0, barCount - 1)
-                                    for (i in 0 until barCount) {
+                                    }
+                                }
+                            }
+                        }
+                    } else if (messageType == Constants.MESSAGE_TYPE_VOICE && !isRecalled) {
+                        val context = LocalContext.current
+                        var voiceIsPlaying by remember { mutableStateOf(false) }
+                        var voicePositionMs by remember { mutableStateOf(0L) }
+                        var voiceDurationMs by remember { mutableStateOf(duration * 1000L) }
+                        var voiceProgress by remember { mutableStateOf(0f) }
+                        val voicePlayer = remember { MediaPlayer() }
+                        var isPrepared by remember { mutableStateOf(false) }
+
+                        DisposableEffect(text) {
+                            voicePlayer.setOnPreparedListener { mp ->
+                                voiceDurationMs = mp.duration.toLong()
+                                isPrepared = true
+                            }
+                            voicePlayer.setOnCompletionListener {
+                                voiceIsPlaying = false
+                                voicePositionMs = 0L
+                                voiceProgress = 0f
+                            }
+                            voicePlayer.setDataSource(text)
+                            voicePlayer.prepareAsync()
+
+                            val progressScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+                            val job = progressScope.launch {
+                                while (true) {
+                                    delay(100)
+                                    if (voicePlayer.isPlaying) {
+                                        voicePositionMs = voicePlayer.currentPosition.toLong()
+                                        voiceDurationMs = voicePlayer.duration.toLong()
+                                        voiceProgress = if (voiceDurationMs > 0) voicePositionMs.toFloat() / voiceDurationMs else 0f
+                                    }
+                                }
+                            }
+
+                            onDispose {
+                                job.cancel()
+                                try {
+                                    if (voicePlayer.isPlaying) voicePlayer.stop()
+                                    voicePlayer.release()
+                                } catch (_: Exception) {}
+                            }
+                        }
+
+                        val minutes = duration / 60
+                        val seconds = duration % 60
+                        val durationText = if (minutes > 0) "${minutes}:${String.format("%02d", seconds)}" else "0:${String.format("%02d", seconds)}"
+                        val posMins = voicePositionMs / 1000 / 60
+                        val posSecs = (voicePositionMs / 1000) % 60
+                        val positionText = String.format("%d:%02d", posMins, posSecs)
+
+                        val reactions = message?.reactions ?: emptyMap()
+
+                        Box(modifier = Modifier.widthIn(max = 260.dp)) {
+                            Box(
+                                modifier = Modifier
+                                    .combinedClickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null,
+                                        onClick = {},
+                                        onLongClick = onLongClick
+                                    )
+                                    .background(color = if (isMe) nc.sentBubble else nc.receivedBubble, shape = bubbleShape)
+                                    .then(if (reactions.isNotEmpty()) Modifier.padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 26.dp) else Modifier.padding(horizontal = 12.dp, vertical = 10.dp))
+                            ) {
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
                                         Box(
                                             modifier = Modifier
-                                                .width(3.dp)
-                                                .height(heights[i % heights.size].dp)
-                                                .clip(RoundedCornerShape(2.dp))
-                                                .background(if (i <= activeBar) barColorActive else barColor)
+                                                .size(36.dp)
+                                                .clip(CircleShape)
+                                                .background(if (isMe) nc.sentBubbleText.copy(alpha = 0.15f) else nc.receivedBubbleText.copy(alpha = 0.15f))
+                                                .clickable {
+                                                    if (isPrepared) {
+                                                        if (voiceIsPlaying) { voicePlayer.pause(); voiceIsPlaying = false }
+                                                        else { voicePlayer.start(); voiceIsPlaying = true }
+                                                    }
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                if (voiceIsPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
+                                                contentDescription = if (voiceIsPlaying) "Dừng" else "Phát",
+                                                tint = if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
+                                                modifier = Modifier.size(20.dp)
                                             )
+                                        }
+
+                                        Row(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .pointerInput(Unit) {
+                                                    detectDragGestures { change, _ ->
+                                                        val fraction = (change.position.x / size.width).coerceIn(0f, 1f)
+                                                        if (isPrepared) { voicePlayer.seekTo((fraction * voiceDurationMs).toInt()); voiceProgress = fraction }
+                                                    }
+                                                }
+                                                .pointerInput(Unit) {
+                                                    detectTapGestures { offset ->
+                                                        val fraction = (offset.x / size.width).coerceIn(0f, 1f)
+                                                        if (isPrepared) { voicePlayer.seekTo((fraction * voiceDurationMs).toInt()); voiceProgress = fraction }
+                                                    }
+                                                },
+                                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            val barCount = 20
+                                            val barColor = if (isMe) nc.sentBubbleText.copy(alpha = 0.5f) else nc.receivedBubbleText.copy(alpha = 0.5f)
+                                            val barColorActive = if (isMe) nc.sentBubbleText else nc.receivedBubbleText
+                                            val heights = listOf(8, 14, 20, 16, 10, 18, 22, 14, 8, 16, 20, 12, 18, 14, 10, 22, 16, 8, 14, 20)
+                                            val activeBar = (voiceProgress * barCount).toInt().coerceIn(0, barCount - 1)
+                                            for (i in 0 until barCount) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .width(3.dp)
+                                                        .height(heights[i % heights.size].dp)
+                                                        .clip(RoundedCornerShape(2.dp))
+                                                        .background(if (i <= activeBar) barColorActive else barColor)
+                                                )
+                                            }
+                                        }
                                     }
-                                }
-                            }
 
-                            // Time display
-                            Text(
-                                text = if (voiceIsPlaying) "$positionText / $durationText" else durationText,
-                                color = if (isMe) nc.sentBubbleText.copy(alpha = 0.7f) else nc.receivedBubbleText.copy(alpha = 0.7f),
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
-
-
-                    if (reactions.isNotEmpty()) {
-                        val displayEmoji = reactions.values.groupBy { e: String -> e }.maxByOrNull { entry -> entry.value.size }?.key ?: reactions.values.first()
-                        val count = reactions.size
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .offset(x = 4.dp, y = 8.dp)
-                                .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
-                                .background(nc.background, RoundedCornerShape(10.dp))
-                                .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
-                                .padding(horizontal = 5.dp, vertical = 2.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(displayEmoji, fontSize = 12.sp)
-                                if (count > 1) {
                                     Text(
-                                        text = count.toString(),
-                                        color = nc.textSecondary,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.padding(start = 2.dp)
+                                        text = if (voiceIsPlaying) "$positionText / $durationText" else durationText,
+                                        color = if (isMe) nc.sentBubbleText.copy(alpha = 0.7f) else nc.receivedBubbleText.copy(alpha = 0.7f),
+                                        fontSize = 11.sp
                                     )
                                 }
                             }
-                        }
-                    }
-                }
-            } else if (messageType == Constants.MESSAGE_TYPE_FILE && !isRecalled) {
-                // File bubble
-                val context = LocalContext.current
-                val fileUrl = text
-                val fileName = message?.fileName ?: "File"
-                val fileSize = message?.fileSize ?: 0L
-                val reactions = message?.reactions ?: emptyMap()
 
-                Box(
-                    modifier = Modifier.widthIn(max = 260.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .combinedClickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = {
-                                    try {
-                                        val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(fileUrl))
-                                        context.startActivity(intent)
-                                    } catch (_: Exception) {
-                                        android.widget.Toast.makeText(context, "Không thể mở file", android.widget.Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                onLongClick = onLongClick
-                            )
-                            .background(
-                                color = if (isMe) nc.sentBubble else nc.receivedBubble,
-                                shape = bubbleShape
-                            )
-                            .then(if (reactions.isNotEmpty()) Modifier.padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 26.dp) else Modifier.padding(horizontal = 12.dp, vertical = 10.dp))
-                    ) {
-                        Column {
-                            if (message?.replyTo != null) {
-                                QuotedMessagePreview(
-                                    replyTo = message.replyTo,
-                                    isMe = isMe,
-                                    nc = nc,
-                                    currentUserId = currentUserId,
-                                    onQuoteClick = onQuoteClick
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                            }
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
+                            if (reactions.isNotEmpty()) {
+                                val displayEmoji = reactions.values.groupBy { e: String -> e }.maxByOrNull { entry -> entry.value.size }?.key ?: reactions.values.first()
+                                val count = reactions.size
                                 Box(
                                     modifier = Modifier
-                                        .size(40.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(if (isMe) nc.sentBubbleText.copy(alpha = 0.12f) else nc.receivedBubbleText.copy(alpha = 0.12f)),
-                                    contentAlignment = Alignment.Center
+                                        .align(Alignment.BottomEnd)
+                                        .offset(x = 4.dp, y = 8.dp)
+                                        .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
+                                        .background(nc.background, RoundedCornerShape(10.dp))
+                                        .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
+                                        .padding(horizontal = 5.dp, vertical = 2.dp)
                                 ) {
-                                    Icon(
-                                        Icons.Default.InsertDriveFile,
-                                        contentDescription = null,
-                                        tint = if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
-                                        modifier = Modifier.size(22.dp)
-                                    )
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(displayEmoji, fontSize = 12.sp)
+                                        if (count > 1) {
+                                            Text(text = count.toString(), color = nc.textSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 2.dp))
+                                        }
+                                    }
                                 }
+                            }
+                        }
+                    } else if (messageType == Constants.MESSAGE_TYPE_FILE && !isRecalled) {
+                        val context = LocalContext.current
+                        val fileUrl = text
+                        val fileName = message?.fileName ?: "File"
+                        val fileSize = message?.fileSize ?: 0L
+                        val reactions = message?.reactions ?: emptyMap()
 
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = fileName,
-                                        color = if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis
+                        Box(modifier = Modifier.widthIn(max = 260.dp)) {
+                            Box(
+                                modifier = Modifier
+                                    .combinedClickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null,
+                                        onClick = {
+                                            try {
+                                                val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(fileUrl))
+                                                context.startActivity(intent)
+                                            } catch (_: Exception) {
+                                                android.widget.Toast.makeText(context, "Không thể mở file", android.widget.Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        onLongClick = onLongClick
                                     )
-                                    if (fileSize > 0) {
-                                        Text(
-                                            text = fileSize.toReadableFileSize(),
-                                            color = if (isMe) nc.sentBubbleText.copy(alpha = 0.6f) else nc.receivedBubbleText.copy(alpha = 0.6f),
-                                            fontSize = 11.sp
+                                    .background(color = if (isMe) nc.sentBubble else nc.receivedBubble, shape = bubbleShape)
+                                    .then(if (reactions.isNotEmpty()) Modifier.padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 26.dp) else Modifier.padding(horizontal = 12.dp, vertical = 10.dp))
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (isMe) nc.sentBubbleText.copy(alpha = 0.12f) else nc.receivedBubbleText.copy(alpha = 0.12f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Default.InsertDriveFile,
+                                            contentDescription = null,
+                                            tint = if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
+                                            modifier = Modifier.size(22.dp)
                                         )
+                                    }
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(text = fileName, color = if (isMe) nc.sentBubbleText else nc.receivedBubbleText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                        if (fileSize > 0) {
+                                            Text(text = fileSize.toReadableFileSize(), color = if (isMe) nc.sentBubbleText.copy(alpha = 0.6f) else nc.receivedBubbleText.copy(alpha = 0.6f), fontSize = 11.sp)
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (reactions.isNotEmpty()) {
+                                val displayEmoji = reactions.values.groupBy { e: String -> e }.maxByOrNull { entry -> entry.value.size }?.key ?: reactions.values.first()
+                                val count = reactions.size
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .offset(x = 4.dp, y = 8.dp)
+                                        .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
+                                        .background(nc.background, RoundedCornerShape(10.dp))
+                                        .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
+                                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(displayEmoji, fontSize = 12.sp)
+                                        if (count > 1) {
+                                            Text(text = count.toString(), color = nc.textSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 2.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // Text bubble
+                        val reactions = message?.reactions ?: emptyMap()
+
+                        Box(modifier = Modifier.widthIn(max = 280.dp)) {
+                            Box(
+                                modifier = Modifier
+                                    .combinedClickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null,
+                                        onClick = {},
+                                        onLongClick = onLongClick
+                                    )
+                                    .background(color = if (isMe) nc.sentBubble else nc.receivedBubble, shape = bubbleShape)
+                                    .padding(
+                                        start = 14.dp, end = 14.dp, top = 10.dp,
+                                        bottom = if (reactions.isNotEmpty()) 26.dp else 10.dp
+                                    )
+                            ) {
+                                Text(
+                                    text = if (isRecalled) "Tin nhắn đã được thu hồi" else text,
+                                    color = if (isRecalled) nc.textTertiary else if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
+                                    fontSize = 15.sp,
+                                    lineHeight = 20.sp,
+                                    fontStyle = if (isRecalled) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal
+                                )
+                            }
+
+                            if (reactions.isNotEmpty()) {
+                                val displayEmoji = reactions.values.groupBy { e: String -> e }.maxByOrNull { entry -> entry.value.size }?.key ?: reactions.values.first()
+                                val count = reactions.size
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .offset(x = 4.dp, y = 8.dp)
+                                        .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
+                                        .background(nc.background, RoundedCornerShape(10.dp))
+                                        .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
+                                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(displayEmoji, fontSize = 12.sp)
+                                        if (count > 1) {
+                                            Text(text = count.toString(), color = nc.textSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 2.dp))
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-
-                    if (reactions.isNotEmpty()) {
-                        val displayEmoji = reactions.values.groupBy { e: String -> e }.maxByOrNull { entry -> entry.value.size }?.key ?: reactions.values.first()
-                        val count = reactions.size
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .offset(x = 4.dp, y = 8.dp)
-                                .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
-                                .background(nc.background, RoundedCornerShape(10.dp))
-                                .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
-                                .padding(horizontal = 5.dp, vertical = 2.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(displayEmoji, fontSize = 12.sp)
-                                if (count > 1) {
-                                    Text(
-                                        text = count.toString(),
-                                        color = nc.textSecondary,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.padding(start = 2.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            } else {
-                // Text bubble
-                val reactions = message?.reactions ?: emptyMap()
-
-                Box(
-                    modifier = Modifier.widthIn(max = 280.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .combinedClickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = {},
-                                onLongClick = onLongClick
-                            )
-                            .background(
-                                color = if (isMe) nc.sentBubble else nc.receivedBubble,
-                                shape = bubbleShape
-                            )
-                            .padding(
-                                start = 14.dp, end = 14.dp, top = 10.dp,
-                                bottom = if (reactions.isNotEmpty()) 26.dp else 10.dp
-                            )
-                    ) {
-                        Column {
-                            if (!isRecalled && message?.replyTo != null) {
-                                QuotedMessagePreview(
-                                    replyTo = message.replyTo,
-                                    isMe = isMe,
-                                    nc = nc,
-                                    currentUserId = currentUserId,
-                                    onQuoteClick = onQuoteClick
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                            }
-                            Text(
-                                text = if (isRecalled) "Tin nhắn đã được thu hồi" else text,
-                                color = if (isRecalled) nc.textTertiary else if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
-                                fontSize = 15.sp,
-                                lineHeight = 20.sp,
-                                fontStyle = if (isRecalled) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal
-                            )
-                        }
-                    }
-
-                    if (reactions.isNotEmpty()) {
-                        val displayEmoji = reactions.values.groupBy { e: String -> e }.maxByOrNull { entry -> entry.value.size }?.key ?: reactions.values.first()
-                        val count = reactions.size
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .offset(x = 4.dp, y = 8.dp)
-                                .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
-                                .background(nc.background, RoundedCornerShape(10.dp))
-                                .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
-                                .padding(horizontal = 5.dp, vertical = 2.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(displayEmoji, fontSize = 12.sp)
-                                if (count > 1) {
-                                    Text(
-                                        text = count.toString(),
-                                        color = nc.textSecondary,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.padding(start = 2.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
                 }
             }
 
-            if (isMe) {
-                Spacer(modifier = Modifier.width(4.dp))
-            }
+            if (isMe) Spacer(modifier = Modifier.width(4.dp))
         }
 
         val timeStartPadding = if (!isMe) avatarSize.dp + 6.dp else 0.dp
@@ -2024,20 +1952,10 @@ fun MessageBubble(
             horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = time,
-                color = nc.textTertiary,
-                fontSize = 11.sp,
-                modifier = Modifier.padding(horizontal = 4.dp)
-            )
+            Text(text = time, color = nc.textTertiary, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 4.dp))
             if (isMe && status.isNotEmpty()) {
                 Text(
-                    text = when(status) {
-                        "seen" -> "Đã xem"
-                        "delivered" -> "Đã nhận"
-                        "recalled" -> ""
-                        else -> "Đã gửi"
-                    },
+                    text = when(status) { "seen" -> "Đã xem"; "delivered" -> "Đã nhận"; "recalled" -> ""; else -> "Đã gửi" },
                     color = if (status == "seen") NexusPrimary else nc.textTertiary,
                     fontSize = 10.sp,
                     modifier = Modifier.padding(horizontal = 4.dp)
@@ -2205,68 +2123,6 @@ fun CallHistoryBubble(
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
             )
         }
-    }
-}
-
-@Composable
-private fun QuotedMessagePreview(
-    replyTo: ReplyMessage,
-    isMe: Boolean,
-    nc: NexusColors,
-    currentUserId: String? = null,
-    onQuoteClick: ((String) -> Unit)? = null
-) {
-    val bubbleText = when (replyTo.type) {
-        Constants.MESSAGE_TYPE_IMAGE -> "📷 Hình ảnh"
-        Constants.MESSAGE_TYPE_VOICE -> "🎤 Tin nhắn thoại"
-        Constants.MESSAGE_TYPE_FILE -> "📎 Tệp"
-        else -> replyTo.text
-    }
-    val headerText = if (replyTo.senderId == currentUserId) {
-        "Bạn đã trả lời chính mình"
-    } else {
-        "Bạn đã trả lời ${replyTo.senderName}"
-    }
-    val accentColor = if (isMe) nc.sentBubbleText.copy(alpha = 0.7f) else nc.receivedBubbleText.copy(alpha = 0.7f)
-    val bodyColor = if (isMe) nc.sentBubbleText.copy(alpha = 0.85f) else nc.receivedBubbleText.copy(alpha = 0.85f)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = onQuoteClick != null && replyTo.messageId.isNotEmpty()) {
-                onQuoteClick?.invoke(replyTo.messageId)
-            }
-            .padding(vertical = 2.dp)
-    ) {
-        // Header: ← Bạn đã trả lời ...
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(bottom = 2.dp)
-        ) {
-            Icon(
-                Icons.Default.Reply,
-                contentDescription = null,
-                tint = accentColor,
-                modifier = Modifier.size(14.dp)
-            )
-            Spacer(modifier = Modifier.width(4.dp))
-            Text(
-                text = headerText,
-                color = accentColor,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Normal,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        // Quoted message text
-        Text(
-            text = bubbleText,
-            color = bodyColor,
-            fontSize = 13.sp,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(start = 18.dp)
-        )
     }
 }
 
