@@ -1631,6 +1631,7 @@ fun MessageBubble(
 
                 // ── Main bubble (zIndex overlaps the reply quote) ──
                 val hasReply = message?.replyTo != null && !isRecalled
+                val reactions = message?.reactions ?: emptyMap()
                 Box(modifier = if (hasReply) Modifier.offset(y = (-8).dp).zIndex(1f) else Modifier) {
                     if (isRecalled) {
                         // ── Recalled bubble: frozen, border-only, italic ──
@@ -1648,8 +1649,13 @@ fun MessageBubble(
                             )
                         }
                     } else if (messageType == Constants.MESSAGE_TYPE_IMAGE && !isRecalled) {
-                        val reactions = message?.reactions ?: emptyMap()
-                        Box(modifier = Modifier.widthIn(max = 240.dp)) {
+                        // ── Image bubble: overlay reaction badge ──
+                        Box(
+                            modifier = Modifier
+                                .widthIn(max = 240.dp)
+                                .then(if (reactions.isNotEmpty()) Modifier.padding(bottom = 12.dp) else Modifier)
+                        ) {
+                            // Layer 1: main bubble
                             Box(
                                 modifier = Modifier
                                     .combinedClickable(
@@ -1660,7 +1666,6 @@ fun MessageBubble(
                                     )
                                     .clip(bubbleShape)
                                     .background(color = if (isMe) nc.sentBubble else nc.receivedBubble, shape = bubbleShape)
-                                    .then(if (reactions.isNotEmpty()) Modifier.padding(bottom = 18.dp) else Modifier)
                             ) {
                                 AsyncImage(
                                     model = text,
@@ -1669,28 +1674,32 @@ fun MessageBubble(
                                     modifier = Modifier.fillMaxWidth().clip(bubbleShape)
                                 )
                             }
+                            // Layer 2: reaction badge overlay
                             if (reactions.isNotEmpty()) {
                                 val displayEmoji = reactions.values.groupBy { e: String -> e }.maxByOrNull { entry -> entry.value.size }?.key ?: reactions.values.first()
                                 val count = reactions.size
-                                Box(
-                                    modifier = Modifier
-                                        .align(Alignment.BottomEnd)
-                                        .offset(x = 4.dp, y = 8.dp)
-                                        .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
-                                        .background(nc.background, RoundedCornerShape(10.dp))
-                                        .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
-                                        .padding(horizontal = 5.dp, vertical = 2.dp)
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(displayEmoji, fontSize = 12.sp)
-                                        if (count > 1) {
-                                            Text(text = count.toString(), color = nc.textSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 2.dp))
+                                Box(modifier = Modifier.matchParentSize()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .offset(x = 4.dp, y = 12.dp)
+                                            .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
+                                            .background(nc.background, RoundedCornerShape(10.dp))
+                                            .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
+                                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(displayEmoji, fontSize = 12.sp)
+                                            if (count > 1) {
+                                                Text(text = count.toString(), color = nc.textSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 2.dp))
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
                     } else if (messageType == Constants.MESSAGE_TYPE_VOICE && !isRecalled) {
+                        // ── Voice bubble: overlay reaction badge ──
                         val context = LocalContext.current
                         var voiceIsPlaying by remember { mutableStateOf(false) }
                         var voicePositionMs by remember { mutableStateOf(0L) }
@@ -1740,9 +1749,12 @@ fun MessageBubble(
                         val posSecs = (voicePositionMs / 1000) % 60
                         val positionText = String.format("%d:%02d", posMins, posSecs)
 
-                        val reactions = message?.reactions ?: emptyMap()
-
-                        Box(modifier = Modifier.widthIn(max = 260.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .widthIn(max = 260.dp)
+                                .then(if (reactions.isNotEmpty()) Modifier.padding(bottom = 12.dp) else Modifier)
+                        ) {
+                            // Layer 1: main bubble
                             Box(
                                 modifier = Modifier
                                     .combinedClickable(
@@ -1752,7 +1764,7 @@ fun MessageBubble(
                                         onLongClick = onLongClick
                                     )
                                     .background(color = if (isMe) nc.sentBubble else nc.receivedBubble, shape = bubbleShape)
-                                    .then(if (reactions.isNotEmpty()) Modifier.padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 26.dp) else Modifier.padding(horizontal = 12.dp, vertical = 10.dp))
+                                    .padding(horizontal = 12.dp, vertical = 10.dp)
                             ) {
                                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Row(
@@ -1822,36 +1834,43 @@ fun MessageBubble(
                                     )
                                 }
                             }
-
+                            // Layer 2: reaction badge overlay
                             if (reactions.isNotEmpty()) {
                                 val displayEmoji = reactions.values.groupBy { e: String -> e }.maxByOrNull { entry -> entry.value.size }?.key ?: reactions.values.first()
                                 val count = reactions.size
-                                Box(
-                                    modifier = Modifier
-                                        .align(Alignment.BottomEnd)
-                                        .offset(x = 4.dp, y = 8.dp)
-                                        .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
-                                        .background(nc.background, RoundedCornerShape(10.dp))
-                                        .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
-                                        .padding(horizontal = 5.dp, vertical = 2.dp)
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(displayEmoji, fontSize = 12.sp)
-                                        if (count > 1) {
-                                            Text(text = count.toString(), color = nc.textSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 2.dp))
+                                Box(modifier = Modifier.matchParentSize()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .offset(x = 4.dp, y = 12.dp)
+                                            .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
+                                            .background(nc.background, RoundedCornerShape(10.dp))
+                                            .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
+                                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(displayEmoji, fontSize = 12.sp)
+                                            if (count > 1) {
+                                                Text(text = count.toString(), color = nc.textSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 2.dp))
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
                     } else if (messageType == Constants.MESSAGE_TYPE_FILE && !isRecalled) {
+                        // ── File bubble: overlay reaction badge ──
                         val context = LocalContext.current
                         val fileUrl = text
                         val fileName = message?.fileName ?: "File"
                         val fileSize = message?.fileSize ?: 0L
-                        val reactions = message?.reactions ?: emptyMap()
 
-                        Box(modifier = Modifier.widthIn(max = 260.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .widthIn(max = 260.dp)
+                                .then(if (reactions.isNotEmpty()) Modifier.padding(bottom = 12.dp) else Modifier)
+                        ) {
+                            // Layer 1: main bubble
                             Box(
                                 modifier = Modifier
                                     .combinedClickable(
@@ -1868,7 +1887,7 @@ fun MessageBubble(
                                         onLongClick = onLongClick
                                     )
                                     .background(color = if (isMe) nc.sentBubble else nc.receivedBubble, shape = bubbleShape)
-                                    .then(if (reactions.isNotEmpty()) Modifier.padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 26.dp) else Modifier.padding(horizontal = 12.dp, vertical = 10.dp))
+                                    .padding(horizontal = 12.dp, vertical = 10.dp)
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
@@ -1896,33 +1915,38 @@ fun MessageBubble(
                                     }
                                 }
                             }
-
+                            // Layer 2: reaction badge overlay
                             if (reactions.isNotEmpty()) {
                                 val displayEmoji = reactions.values.groupBy { e: String -> e }.maxByOrNull { entry -> entry.value.size }?.key ?: reactions.values.first()
                                 val count = reactions.size
-                                Box(
-                                    modifier = Modifier
-                                        .align(Alignment.BottomEnd)
-                                        .offset(x = 4.dp, y = 8.dp)
-                                        .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
-                                        .background(nc.background, RoundedCornerShape(10.dp))
-                                        .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
-                                        .padding(horizontal = 5.dp, vertical = 2.dp)
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(displayEmoji, fontSize = 12.sp)
-                                        if (count > 1) {
-                                            Text(text = count.toString(), color = nc.textSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 2.dp))
+                                Box(modifier = Modifier.matchParentSize()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .offset(x = 4.dp, y = 12.dp)
+                                            .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
+                                            .background(nc.background, RoundedCornerShape(10.dp))
+                                            .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
+                                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(displayEmoji, fontSize = 12.sp)
+                                            if (count > 1) {
+                                                Text(text = count.toString(), color = nc.textSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 2.dp))
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
                     } else {
-                        // Text bubble
-                        val reactions = message?.reactions ?: emptyMap()
-
-                        Box(modifier = Modifier.widthIn(max = 280.dp)) {
+                        // ── Text bubble: overlay reaction badge ──
+                        Box(
+                            modifier = Modifier
+                                .widthIn(max = 280.dp)
+                                .then(if (reactions.isNotEmpty()) Modifier.padding(bottom = 12.dp) else Modifier)
+                        ) {
+                            // Layer 1: main bubble
                             Box(
                                 modifier = Modifier
                                     .combinedClickable(
@@ -1932,36 +1956,34 @@ fun MessageBubble(
                                         onLongClick = onLongClick
                                     )
                                     .background(color = if (isMe) nc.sentBubble else nc.receivedBubble, shape = bubbleShape)
-                                    .padding(
-                                        start = 14.dp, end = 14.dp, top = 10.dp,
-                                        bottom = if (reactions.isNotEmpty()) 26.dp else 10.dp
-                                    )
+                                    .padding(horizontal = 14.dp, vertical = 10.dp)
                             ) {
                                 Text(
-                                    text = if (isRecalled) "Tin nhắn đã được thu hồi" else text,
-                                    color = if (isRecalled) nc.textTertiary else if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
+                                    text = text,
+                                    color = if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
                                     fontSize = 15.sp,
-                                    lineHeight = 20.sp,
-                                    fontStyle = FontStyle.Normal
+                                    lineHeight = 20.sp
                                 )
                             }
-
+                            // Layer 2: reaction badge overlay
                             if (reactions.isNotEmpty()) {
                                 val displayEmoji = reactions.values.groupBy { e: String -> e }.maxByOrNull { entry -> entry.value.size }?.key ?: reactions.values.first()
                                 val count = reactions.size
-                                Box(
-                                    modifier = Modifier
-                                        .align(Alignment.BottomEnd)
-                                        .offset(x = 4.dp, y = 8.dp)
-                                        .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
-                                        .background(nc.background, RoundedCornerShape(10.dp))
-                                        .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
-                                        .padding(horizontal = 5.dp, vertical = 2.dp)
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(displayEmoji, fontSize = 12.sp)
-                                        if (count > 1) {
-                                            Text(text = count.toString(), color = nc.textSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 2.dp))
+                                Box(modifier = Modifier.matchParentSize()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .offset(x = 4.dp, y = 12.dp)
+                                            .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
+                                            .background(nc.background, RoundedCornerShape(10.dp))
+                                            .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
+                                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(displayEmoji, fontSize = 12.sp)
+                                            if (count > 1) {
+                                                Text(text = count.toString(), color = nc.textSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 2.dp))
+                                            }
                                         }
                                     }
                                 }
