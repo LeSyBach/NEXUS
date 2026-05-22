@@ -98,6 +98,7 @@ class ChatViewModel @Inject constructor(
 
     private val userCache = mutableMapOf<String, User>()
     private var typingJob: Job? = null
+    private var typingDebounceJob: Job? = null
 
     val currentUserId: String?
         get() = chatRepository.getCurrentUserId()
@@ -235,6 +236,7 @@ class ChatViewModel @Inject constructor(
             )
         }
         _replyingToMessage.value = null
+        stopTyping(chatId)
 
         viewModelScope.launch {
             try {
@@ -255,6 +257,10 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    suspend fun forwardMessage(targetChatId: String, message: Message): Resource<Unit> {
+        return chatRepository.forwardMessage(targetChatId, message)
+    }
+
     suspend fun getUsersByIds(userIds: List<String>): List<User> {
         return userIds.mapNotNull { id ->
             userCache[id] ?: try {
@@ -266,6 +272,7 @@ class ChatViewModel @Inject constructor(
     }
 
     fun sendImageMessage(chatId: String, uri: Uri, context: Context) {
+        stopTyping(chatId)
         _pendingImageUri.value = uri
         _uploadState.value = UploadState.Uploading()
 
@@ -294,6 +301,7 @@ class ChatViewModel @Inject constructor(
     }
 
     fun sendMediaMessage(chatId: String, uri: Uri, context: Context) {
+        stopTyping(chatId)
         val mimeType = mediaUploader.getMimeType(context, uri) ?: ""
         val isVideo = mimeType.startsWith("video")
 
@@ -404,6 +412,7 @@ class ChatViewModel @Inject constructor(
     }
 
     fun sendVoicePreview(chatId: String, context: Context) {
+        stopTyping(chatId)
         val state = _voiceState.value
         if (state !is VoiceRecordingState.Previewing) return
 
@@ -434,6 +443,7 @@ class ChatViewModel @Inject constructor(
     }
 
     fun sendVoiceDirectly(chatId: String, context: Context) {
+        stopTyping(chatId)
         recordTimerJob?.cancel()
         recordTimerJob = null
         amplitudeJob?.cancel()
@@ -469,6 +479,7 @@ class ChatViewModel @Inject constructor(
     }
 
     fun sendFileMessage(chatId: String, uri: Uri, context: Context) {
+        stopTyping(chatId)
         val fileInfo = context.getFileInfo(uri) ?: return
         if (fileInfo.fileSizeBytes > Constants.MAX_FILE_SIZE_MB * 1024 * 1024) {
             _uploadState.value = UploadState.Error("File quá lớn (tối đa ${Constants.MAX_FILE_SIZE_MB}MB)")
@@ -518,10 +529,29 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    fun setTypingStatus(chatId: String, isTyping: Boolean) {
+    fun startTyping(chatId: String) {
+        // Send typing=true once
+        typingDebounceJob?.cancel()
+        typingDebounceJob = viewModelScope.launch {
+            try {
+                chatRepository.setTypingStatus(chatId, true)
+            } catch (_: Exception) {}
+        }
+        // Auto-stop after 3 seconds of inactivity
+        typingDebounceJob = viewModelScope.launch {
+            delay(3000L)
+            try {
+                chatRepository.setTypingStatus(chatId, false)
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun stopTyping(chatId: String) {
+        typingDebounceJob?.cancel()
+        typingDebounceJob = null
         viewModelScope.launch {
             try {
-                chatRepository.setTypingStatus(chatId, isTyping)
+                chatRepository.setTypingStatus(chatId, false)
             } catch (_: Exception) {}
         }
     }
@@ -529,14 +559,8 @@ class ChatViewModel @Inject constructor(
     fun startObservingTyping(chatId: String) {
         typingJob?.cancel()
         typingJob = viewModelScope.launch {
-            while (isActive) {
-                try {
-                    val chat = chatRepository.getChatById(chatId)
-                    if (chat != null) {
-                        _isTyping.value = chat.typingUsers.any { it != currentUserId }
-                    }
-                } catch (_: Exception) {}
-                delay(3000)
+            chatRepository.observeTypingUsers(chatId).collect { typingUsers ->
+                _isTyping.value = typingUsers.any { it != currentUserId }
             }
         }
     }

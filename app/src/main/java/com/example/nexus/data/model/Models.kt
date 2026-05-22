@@ -82,6 +82,7 @@ data class Message(
     val seenBy: List<String> = emptyList(),
     val reactions: Map<String, String> = emptyMap(), // userId -> emoji
     val replyTo: ReplyMessage? = null,
+    val forwardedFrom: String? = null,
     @ServerTimestamp
     val timestamp: Timestamp? = null,
 )

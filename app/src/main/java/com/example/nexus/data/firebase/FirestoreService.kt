@@ -166,6 +166,20 @@ class FirestoreService @Inject constructor(
             .await()
     }
 
+    fun observeTypingUsers(chatId: String): Flow<List<String>> = callbackFlow {
+        val listener = firestore.collection(Constants.COLLECTION_CHATS)
+            .document(chatId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    close(error)
+                    return@addSnapshotListener
+                }
+                val chat = snapshot?.toObject(Chat::class.java)
+                trySend(chat?.typingUsers ?: emptyList())
+            }
+        awaitClose { listener.remove() }
+    }
+
     // ══════════════════════════════════════════════════════════════
     // MESSAGE OPERATIONS
     // ══════════════════════════════════════════════════════════════

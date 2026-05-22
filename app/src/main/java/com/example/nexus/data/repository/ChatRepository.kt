@@ -111,6 +111,10 @@ class ChatRepository @Inject constructor(
         firestoreService.updateTypingStatus(chatId, userId, isTyping)
     }
 
+    fun observeTypingUsers(chatId: String): Flow<List<String>> {
+        return firestoreService.observeTypingUsers(chatId)
+    }
+
     suspend fun toggleReaction(chatId: String, messageId: String, emoji: String) {
         val userId = authService.currentUserId ?: return
         val message = firestoreService.getMessage(chatId, messageId) ?: return
@@ -279,6 +283,51 @@ class ChatRepository @Inject constructor(
             Resource.Success(Unit)
         } catch (e: Exception) {
             Resource.Error(e.message ?: "Failed to send file message")
+        }
+    }
+
+    suspend fun forwardMessage(targetChatId: String, original: Message): Resource<Unit> {
+        return try {
+            val userId = authService.currentUserId ?: return Resource.Error("User not logged in")
+            val currentUser = firestoreService.getUser(userId)
+            val currentUserName = currentUser?.displayName?.ifEmpty { currentUser.username } ?: "Unknown"
+            val forwardedFrom = original.forwardedFrom ?: currentUserName
+            val newMessage = Message(
+                senderId = userId,
+                senderName = currentUser?.username ?: "Unknown",
+                text = original.text,
+                type = original.type,
+                fileName = original.fileName,
+                fileSize = original.fileSize,
+                duration = original.duration,
+                forwardedFrom = forwardedFrom
+            )
+            firestoreService.sendMessage(targetChatId, newMessage)
+
+            val chat = firestoreService.getChat(targetChatId)
+            if (chat != null) {
+                val otherParticipants = chat.participants.filter { it != userId }
+                val previewText = when (original.type) {
+                    Constants.MESSAGE_TYPE_IMAGE -> "📷 Hình ảnh"
+                    Constants.MESSAGE_TYPE_VIDEO -> "🎬 Video"
+                    Constants.MESSAGE_TYPE_VOICE -> "🎤 Tin nhắn thoại"
+                    Constants.MESSAGE_TYPE_FILE -> "📎 ${original.fileName.ifEmpty { "Tệp" }}"
+                    else -> original.text
+                }
+                for (receiverId in otherParticipants) {
+                    notificationService.sendMessageNotification(
+                        receiverId = receiverId,
+                        senderName = currentUser?.displayName?.ifEmpty { currentUser.username } ?: "User",
+                        messageText = previewText,
+                        chatId = targetChatId,
+                        senderId = userId
+                    )
+                }
+            }
+
+            Resource.Success(Unit)
+        } catch (e: Exception) {
+            Resource.Error(e.message ?: "Failed to forward message")
         }
     }
 
