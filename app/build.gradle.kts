@@ -60,6 +60,7 @@ android {
         buildConfigField("String", "FCM_SA_PROJECT_ID", "\"${localProps.getProperty("FCM_SA_PROJECT_ID", "")}\"")
         buildConfigField("String", "FCM_SA_CLIENT_EMAIL", "\"${localProps.getProperty("FCM_SA_CLIENT_EMAIL", "")}\"")
         buildConfigField("String", "FCM_SA_PRIVATE_KEY_ID", "\"${localProps.getProperty("FCM_SA_PRIVATE_KEY_ID", "")}\"")
+        buildConfigField("String", "MIMO_API_KEY", "\"${localProps.getProperty("MIMO_API_KEY", "")}\"")
     }
 
     buildTypes {
@@ -142,6 +143,9 @@ dependencies {
 
     // OkHttp (dùng cho FCM direct send)
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // Gson (JSON parsing for MiMo API)
+    implementation("com.google.code.gson:gson:2.11.0")
 
     // Testing
     testImplementation(libs.junit)

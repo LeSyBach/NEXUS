@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.nexus.core.utils.Constants
 import com.example.nexus.core.utils.Resource
 import com.example.nexus.core.utils.getFileInfo
+import com.example.nexus.data.firebase.AiChatService
 import com.example.nexus.data.firebase.AudioPlayerHelper
 import com.example.nexus.data.firebase.MediaUploader
 import com.example.nexus.data.firebase.PlaybackState
@@ -43,12 +44,20 @@ sealed class VoiceRecordingState {
     ) : VoiceRecordingState()
 }
 
+sealed class AiSummaryState {
+    data object Idle : AiSummaryState()
+    data object Loading : AiSummaryState()
+    data class Success(val summary: String) : AiSummaryState()
+    data class Error(val message: String) : AiSummaryState()
+}
+
 @HiltViewModel
 class ChatViewModel @Inject constructor(
     private val chatRepository: ChatRepository,
     private val mediaUploader: MediaUploader,
     private val voiceRecorderHelper: VoiceRecorderHelper,
-    val audioPlayerHelper: AudioPlayerHelper
+    val audioPlayerHelper: AudioPlayerHelper,
+    private val aiChatService: AiChatService
 ) : ViewModel() {
 
     private val _chatsState = MutableStateFlow<Resource<List<Chat>>>(Resource.Idle)
@@ -92,6 +101,15 @@ class ChatViewModel @Inject constructor(
 
     private val _replyingToMessage = MutableStateFlow<Message?>(null)
     val replyingToMessage: StateFlow<Message?> = _replyingToMessage
+
+    private val _aiSummaryState = MutableStateFlow<AiSummaryState>(AiSummaryState.Idle)
+    val aiSummaryState: StateFlow<AiSummaryState> = _aiSummaryState
+
+    private val _smartReplies = MutableStateFlow<List<String>>(emptyList())
+    val smartReplies: StateFlow<List<String>> = _smartReplies
+
+    private var smartReplyJob: Job? = null
+    private var lastProcessedMessageCount = 0
 
     private var recordTimerJob: Job? = null
     private var amplitudeJob: Job? = null
@@ -167,6 +185,16 @@ class ChatViewModel @Inject constructor(
             try {
                 chatRepository.observeMessages(chatId).collect { result ->
                     _messagesState.value = result
+                    if (result is Resource.Success) {
+                        val messages = result.data
+                        if (messages.isNotEmpty() && messages.size > lastProcessedMessageCount) {
+                            val latest = messages.first() // DESC order
+                            if (latest.senderId != currentUserId && lastProcessedMessageCount > 0) {
+                                requestSmartReplies()
+                            }
+                        }
+                        lastProcessedMessageCount = messages.size
+                    }
                 }
             } catch (_: Exception) {
                 _messagesState.value = Resource.Error("Lỗi tải tin nhắn")
@@ -579,6 +607,10 @@ class ChatViewModel @Inject constructor(
         _messagesState.value = Resource.Idle
         _isTyping.value = false
         _replyingToMessage.value = null
+        _aiSummaryState.value = AiSummaryState.Idle
+        _smartReplies.value = emptyList()
+        smartReplyJob?.cancel()
+        lastProcessedMessageCount = 0
     }
 
     fun loadSharedContentCounts(chatId: String) {
@@ -598,5 +630,56 @@ class ChatViewModel @Inject constructor(
                 _clearChatSuccess.emit(false)
             }
         }
+    }
+
+    // ── AI Features ──
+
+    fun summarizeMessages() {
+        val messages = (_messagesState.value as? Resource.Success)?.data
+        if (messages.isNullOrEmpty()) return
+
+        _aiSummaryState.value = AiSummaryState.Loading
+        viewModelScope.launch {
+            try {
+                val summary = aiChatService.summarizeMessages(messages, currentUserId)
+                _aiSummaryState.value = AiSummaryState.Success(summary)
+            } catch (e: Exception) {
+                _aiSummaryState.value = AiSummaryState.Error(
+                    e.message ?: "Không thể tạo tóm tắt"
+                )
+            }
+        }
+    }
+
+    fun dismissSummary() {
+        _aiSummaryState.value = AiSummaryState.Idle
+    }
+
+    fun requestSmartReplies() {
+        smartReplyJob?.cancel()
+        smartReplyJob = viewModelScope.launch {
+            delay(500)
+            val messages = (_messagesState.value as? Resource.Success)?.data
+            if (messages.isNullOrEmpty()) {
+                _smartReplies.value = emptyList()
+                return@launch
+            }
+            val latestMessage = messages.first() // DESC order
+            if (latestMessage.senderId == currentUserId) {
+                _smartReplies.value = emptyList()
+                return@launch
+            }
+            try {
+                val replies = aiChatService.getSmartReplies(messages, currentUserId)
+                _smartReplies.value = replies
+            } catch (_: Exception) {
+                _smartReplies.value = emptyList()
+            }
+        }
+    }
+
+    fun dismissSmartReplies() {
+        smartReplyJob?.cancel()
+        _smartReplies.value = emptyList()
     }
 }

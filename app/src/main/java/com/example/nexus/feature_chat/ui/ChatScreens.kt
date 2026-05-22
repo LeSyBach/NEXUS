@@ -14,8 +14,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -42,6 +46,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
@@ -119,6 +124,7 @@ import com.example.nexus.data.firebase.PlaybackState
 import com.example.nexus.feature_chat.viewmodel.ChatViewModel
 import com.example.nexus.feature_chat.viewmodel.UploadState
 import com.example.nexus.feature_chat.viewmodel.VoiceRecordingState
+import com.example.nexus.feature_chat.viewmodel.AiSummaryState
 import com.example.nexus.navigation.Screen
 import com.example.nexus.ui.components.NexusBottomBar
 
@@ -662,6 +668,18 @@ fun ConversationScreen(
         derivedStateOf { listState.firstVisibleItemIndex > 2 }
     }
 
+    // ── AI State ──
+    val aiSummaryState = viewModel?.aiSummaryState?.collectAsState()?.value ?: AiSummaryState.Idle
+    val smartReplies = viewModel?.smartReplies?.collectAsState()?.value ?: emptyList()
+    val unreadFromOthers = remember {
+        derivedStateOf {
+            val messages = (messagesState as? Resource.Success)?.data ?: emptyList()
+            messages.count { msg ->
+                msg.senderId != currentUserId && !msg.seenBy.contains(currentUserId)
+            }
+        }
+    }
+
     val recordAudioPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted: Boolean ->
@@ -722,13 +740,17 @@ fun ConversationScreen(
     }
     val avatarInitial = displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
 
-    Column(
+    // ── Scroll state for hiding floating button ──
+    val isScrollingUp = listState.isScrollInProgress && listState.firstVisibleItemIndex > 0
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(nc.background)
             .imePadding()
     ) {
-        // ── Top Bar ──
+        Column(modifier = Modifier.fillMaxSize()) {
+            // ── Top Bar ──
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -985,6 +1007,44 @@ fun ConversationScreen(
         }
 
         Box(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(nc.divider))
+
+        // ── Smart Reply Bar ──
+        AnimatedVisibility(
+            visible = smartReplies.isNotEmpty(),
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(nc.background)
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+            ) {
+                items(smartReplies.size) { index ->
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .border(1.dp, NexusPrimary.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+                            .background(nc.cardBg)
+                            .clickable {
+                                val reply = smartReplies[index]
+                                viewModel?.dismissSmartReplies()
+                                viewModel?.sendMessage(chatId, reply)
+                            }
+                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = smartReplies[index],
+                            fontSize = 13.sp,
+                            color = nc.textPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
 
         // Reply preview bar
         if (replyingToMessage != null) {
@@ -1482,7 +1542,10 @@ fun ConversationScreen(
                                     value = messageText,
                                     onValueChange = {
                                         messageText = it
-                                        if (it.isNotEmpty()) viewModel?.startTyping(chatId)
+                                        if (it.isNotEmpty()) {
+                                            viewModel?.startTyping(chatId)
+                                            viewModel?.dismissSmartReplies()
+                                        }
                                     },
                                     textStyle = TextStyle(color = nc.textPrimary, fontSize = 15.sp),
                                     cursorBrush = SolidColor(NexusPrimary),
@@ -1534,7 +1597,59 @@ fun ConversationScreen(
         }
 
         Spacer(modifier = Modifier.navigationBarsPadding())
-    }
+        } // end Column
+
+        // ── Floating AI Summarize Button ──
+        AnimatedVisibility(
+            visible = unreadFromOthers.value > 10 && !isScrollingUp,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 72.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Color(0xFF2A2A2A).copy(alpha = 0.9f))
+                    .clickable { viewModel?.summarizeMessages() }
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Gradient icon circle
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .background(
+                                brush = Brush.linearGradient(
+                                    colors = listOf(
+                                        Color(0xFF4CAF50), // Xanh
+                                        Color(0xFF9C27B0), // Tím
+                                        Color(0xFFE91E63)  // Hồng
+                                    )
+                                ),
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        "Tóm tắt đoạn chat",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+    } // end Box
 
     // ── Reaction Detail Sheet ──
     reactionsSheetState?.let { (reactions, msgId) ->
@@ -1680,6 +1795,70 @@ fun ConversationScreen(
                             Text(text = emoji, fontSize = 24.sp)
                         }
                     }
+                }
+            }
+        }
+    }
+
+    // ── AI Summary Bottom Sheet (single sheet, content changes with state) ──
+    if (aiSummaryState !is AiSummaryState.Idle) {
+        ModalBottomSheet(
+            onDismissRequest = { viewModel?.dismissSummary() },
+            containerColor = nc.surfaceElevated,
+            scrimColor = Color.Black.copy(alpha = 0.5f)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp)
+                    .padding(bottom = 32.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                ) {
+                    Icon(
+                        Icons.Default.AutoAwesome,
+                        contentDescription = null,
+                        tint = NexusPrimary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "Tóm tắt cuộc trò chuyện",
+                        color = nc.textPrimary,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                when (aiSummaryState) {
+                    is AiSummaryState.Loading -> {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            CircularProgressIndicator(color = NexusPrimary, strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("Đang tạo tóm tắt...", color = nc.textSecondary, fontSize = 14.sp)
+                        }
+                    }
+                    is AiSummaryState.Success -> {
+                        Text(
+                            text = (aiSummaryState as AiSummaryState.Success).summary,
+                            color = nc.textPrimary,
+                            fontSize = 15.sp,
+                            lineHeight = 22.sp
+                        )
+                    }
+                    is AiSummaryState.Error -> {
+                        Text(
+                            text = (aiSummaryState as AiSummaryState.Error).message,
+                            color = Color(0xFFEF4444),
+                            fontSize = 14.sp
+                        )
+                    }
+                    else -> {}
                 }
             }
         }
