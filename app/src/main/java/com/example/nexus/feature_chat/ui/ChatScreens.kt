@@ -1,10 +1,15 @@
 package com.example.nexus.feature_chat.ui
 
 import android.Manifest
+import android.app.DownloadManager
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import android.net.Uri
+import android.os.Environment
+import android.util.Patterns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -12,6 +17,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.border
@@ -33,6 +39,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Call
@@ -40,13 +47,16 @@ import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.Forward
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PlayArrow
@@ -54,12 +64,15 @@ import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Reply
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.LibraryAdd
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.derivedStateOf
@@ -70,6 +83,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -82,6 +96,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
@@ -686,6 +702,7 @@ fun ConversationScreen(
 
     val isOtherTyping = viewModel?.isTyping?.collectAsState()?.value ?: false
     var showMessageMenu by remember { mutableStateOf<Pair<String, Message>?>(null) }
+    var showFullScreenVideo by remember { mutableStateOf<String?>(null) }
     val clipboardManager = LocalClipboardManager.current
     val otherId = otherUser?.uid ?: ""
 
@@ -910,6 +927,16 @@ fun ConversationScreen(
                                                     coroutineScope.launch { listState.animateScrollToItem(index) }
                                                 }
                                             }
+                                        },
+                                        onForward = {
+                                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                type = "*/*"
+                                                putExtra(Intent.EXTRA_TEXT, msg.text)
+                                            }
+                                            context.startActivity(Intent.createChooser(shareIntent, "Chia sẻ"))
+                                        },
+                                        onVideoClick = {
+                                            showFullScreenVideo = msg.text
                                         }
                                     )
                                 }
@@ -1094,6 +1121,54 @@ fun ConversationScreen(
                             Text("Sao chép", color = nc.textPrimary, fontSize = 15.sp)
                         }
 
+                        // Forward
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "*/*"
+                                        putExtra(Intent.EXTRA_TEXT, msg.text)
+                                    }
+                                    context.startActivity(Intent.createChooser(shareIntent, "Chia sẻ"))
+                                    showMessageMenu = null
+                                }
+                                .padding(vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Forward, contentDescription = null, tint = nc.iconTint, modifier = Modifier.size(22.dp))
+                            Spacer(modifier = Modifier.width(14.dp))
+                            Text("Chuyển tiếp", color = nc.textPrimary, fontSize = 15.sp)
+                        }
+
+                        // Download (only for media/file messages)
+                        if (msg.type == Constants.MESSAGE_TYPE_IMAGE ||
+                            msg.type == Constants.MESSAGE_TYPE_VIDEO ||
+                            msg.type == Constants.MESSAGE_TYPE_FILE ||
+                            msg.type == Constants.MESSAGE_TYPE_VOICE) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        try {
+                                            val downloadManager = context.getSystemService(DownloadManager::class.java)
+                                            val request = DownloadManager.Request(Uri.parse(msg.text))
+                                            val fileName = msg.fileName.ifEmpty { msg.type }
+                                            request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                                            request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+                                            downloadManager.enqueue(request)
+                                        } catch (_: Exception) {}
+                                        showMessageMenu = null
+                                    }
+                                    .padding(vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Download, contentDescription = null, tint = nc.iconTint, modifier = Modifier.size(22.dp))
+                                Spacer(modifier = Modifier.width(14.dp))
+                                Text("Tải xuống", color = nc.textPrimary, fontSize = 15.sp)
+                            }
+                        }
+
                         // Recall (only for own messages)
                         if (msg.senderId == currentUserId) {
                             Row(
@@ -1134,6 +1209,9 @@ fun ConversationScreen(
             )
         }
 
+        showFullScreenVideo?.let { url ->
+            FullScreenVideoPlayer(videoUrl = url, onDismiss = { showFullScreenVideo = null })
+        }
 
         when (voiceState) {
             is VoiceRecordingState.Recording -> {
@@ -1619,7 +1697,9 @@ fun MessageBubble(
     onReply: (() -> Unit)? = null,
     onReact: ((String) -> Unit)? = null,
     onReactionsClick: ((Map<String, String>, String) -> Unit)? = null,
-    onQuoteClick: ((String) -> Unit)? = null
+    onQuoteClick: ((String) -> Unit)? = null,
+    onForward: (() -> Unit)? = null,
+    onVideoClick: (() -> Unit)? = null
 ) {
     val nc = MaterialTheme.nexusColors
     val avatarSize = 28
@@ -1756,128 +1836,236 @@ fun MessageBubble(
                             )
                         }
                     } else if (messageType == Constants.MESSAGE_TYPE_IMAGE && !isRecalled) {
-                        // ── Image bubble: overlay reaction badge ──
-                        Box(
-                            modifier = Modifier
-                                .widthIn(max = 240.dp)
-                                .then(if (reactions.isNotEmpty()) Modifier.padding(bottom = 12.dp) else Modifier)
-                        ) {
-                            // Layer 1: main bubble
+                        // ── Image bubble: overlay reaction badge + forward button ──
+                        @Composable
+                        fun ForwardBtn() {
                             Box(
                                 modifier = Modifier
-                                    .combinedClickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null,
-                                        onClick = {},
-                                        onLongClick = onLongClick
-                                    )
-                                    .clip(bubbleShape)
-                                    .background(color = if (isMe) nc.sentBubble else nc.receivedBubble, shape = bubbleShape)
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF2A2A2A))
+                                    .clickable { onForward?.invoke() },
+                                contentAlignment = Alignment.Center
                             ) {
-                                AsyncImage(
-                                    model = text,
-                                    contentDescription = "Hình ảnh",
-                                    contentScale = ContentScale.FillWidth,
-                                    modifier = Modifier.fillMaxWidth().clip(bubbleShape)
+                                Icon(
+                                    Icons.AutoMirrored.Filled.Reply,
+                                    contentDescription = "Chuyển tiếp",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp).graphicsLayer(scaleX = -1f)
                                 )
                             }
-                            // Layer 2: reaction badge overlay
-                            if (reactions.isNotEmpty()) {
-                                val displayEmoji = reactions.values.groupBy { e: String -> e }.maxByOrNull { entry -> entry.value.size }?.key ?: reactions.values.first()
-                                val count = reactions.size
-                                Box(modifier = Modifier.matchParentSize()) {
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.BottomEnd)
-                                            .offset(x = 2.dp, y = 10.dp)
-                                            .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
-                                            .background(nc.background, RoundedCornerShape(10.dp))
-                                            .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
-                                            .padding(horizontal = 4.dp, vertical = 1.dp)
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(displayEmoji, fontSize = 14.sp)
-                                            if (count > 1) {
-                                                Text(text = count.toString(), color = nc.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 1.dp))
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (isMe) ForwardBtn()
+                            Box(
+                                modifier = Modifier
+                                    .widthIn(max = 210.dp)
+                                    .then(if (reactions.isNotEmpty()) Modifier.padding(bottom = 12.dp) else Modifier)
+                            ) {
+                                // Layer 1: main bubble
+                                Box(
+                                    modifier = Modifier
+                                        .combinedClickable(
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null,
+                                            onClick = {},
+                                            onLongClick = onLongClick
+                                        )
+                                        .clip(bubbleShape)
+                                        .background(color = if (isMe) nc.sentBubble else nc.receivedBubble, shape = bubbleShape)
+                                ) {
+                                    AsyncImage(
+                                        model = text,
+                                        contentDescription = "Hình ảnh",
+                                        contentScale = ContentScale.FillWidth,
+                                        modifier = Modifier.fillMaxWidth().clip(bubbleShape)
+                                    )
+                                }
+                                // Layer 2: reaction badge overlay
+                                if (reactions.isNotEmpty()) {
+                                    val displayEmoji = reactions.values.groupBy { e: String -> e }.maxByOrNull { entry -> entry.value.size }?.key ?: reactions.values.first()
+                                    val count = reactions.size
+                                    Box(modifier = Modifier.matchParentSize()) {
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.BottomEnd)
+                                                .offset(x = 2.dp, y = 10.dp)
+                                                .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
+                                                .background(nc.background, RoundedCornerShape(10.dp))
+                                                .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
+                                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(displayEmoji, fontSize = 14.sp)
+                                                if (count > 1) {
+                                                    Text(text = count.toString(), color = nc.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 1.dp))
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
+                            if (!isMe) ForwardBtn()
                         }
                     } else if (messageType == Constants.MESSAGE_TYPE_VIDEO && !isRecalled) {
-                        // ── Video bubble: inline ExoPlayer ──
+                        // ── Video bubble: thumbnail + inline playback + forward button ──
                         val context = LocalContext.current
                         val reactions = message?.reactions ?: emptyMap()
-                        var isPlaying by remember { mutableStateOf(false) }
+                        val videoDurationSec = message?.duration ?: 0L
+                        val durationText = if (videoDurationSec > 0) {
+                            val mins = videoDurationSec / 60
+                            val secs = videoDurationSec % 60
+                            "%d:%02d".format(mins, secs)
+                        } else ""
 
-                        val exoPlayer = remember(text) {
+                        var thumbnailBitmap by remember { mutableStateOf<Bitmap?>(null) }
+                        var isInlinePlaying by remember { mutableStateOf(false) }
+
+                        // Extract first frame as thumbnail
+                        LaunchedEffect(text) {
+                            try {
+                                val retriever = MediaMetadataRetriever()
+                                retriever.setDataSource(text, HashMap())
+                                thumbnailBitmap = retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                                retriever.release()
+                            } catch (_: Exception) {}
+                        }
+
+                        // ExoPlayer for inline playback
+                        val inlineExoPlayer = remember(text) {
                             ExoPlayer.Builder(context).build().apply {
                                 setMediaItem(MediaItem.fromUri(text))
                                 prepare()
                             }
                         }
-
                         DisposableEffect(text) {
                             val listener = object : androidx.media3.common.Player.Listener {
-                                override fun onIsPlayingChanged(playing: Boolean) {
-                                    isPlaying = playing
+                                override fun onPlaybackStateChanged(playbackState: Int) {
+                                    if (playbackState == androidx.media3.common.Player.STATE_ENDED) {
+                                        isInlinePlaying = false
+                                    }
                                 }
                             }
-                            exoPlayer.addListener(listener)
+                            inlineExoPlayer.addListener(listener)
                             onDispose {
-                                exoPlayer.removeListener(listener)
-                                exoPlayer.release()
+                                inlineExoPlayer.removeListener(listener)
+                                try { inlineExoPlayer.release() } catch (_: Exception) {}
                             }
                         }
 
-                        Box(
-                            modifier = Modifier
-                                .widthIn(max = 260.dp)
-                                .then(if (reactions.isNotEmpty()) Modifier.padding(bottom = 12.dp) else Modifier)
-                        ) {
-                            // Layer 1: main bubble
+                        @Composable
+                        fun ForwardBtn() {
                             Box(
                                 modifier = Modifier
-                                    .clip(bubbleShape)
-                                    .background(color = Color.Black, shape = bubbleShape)
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF2A2A2A))
+                                    .clickable { onForward?.invoke() },
+                                contentAlignment = Alignment.Center
                             ) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.Reply,
+                                    contentDescription = "Chuyển tiếp",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp).graphicsLayer(scaleX = -1f)
+                                )
+                            }
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (isMe) ForwardBtn()
+                            Box(
+                                modifier = Modifier
+                                    .widthIn(max = 210.dp)
+                                    .then(if (reactions.isNotEmpty()) Modifier.padding(bottom = 12.dp) else Modifier)
+                            ) {
+                                // Layer 1: main bubble
                                 Box(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .heightIn(max = 300.dp)
-                                        .clip(bubbleShape),
-                                    contentAlignment = Alignment.Center
+                                        .widthIn(max = 210.dp)
+                                        .heightIn(max = 280.dp)
+                                        .wrapContentSize()
+                                        .clip(bubbleShape)
+                                        .background(color = Color(0xFF1A1A1A), shape = bubbleShape)
+                                        .combinedClickable(
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null,
+                                            onClick = {
+                                                if (!isInlinePlaying) onVideoClick?.invoke()
+                                            },
+                                            onLongClick = onLongClick
+                                        )
                                 ) {
-                                    AndroidView(
-                                        factory = { ctx ->
-                                            PlayerView(ctx).apply {
-                                                player = exoPlayer
-                                                useController = true
-                                                setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
-                                            }
-                                        },
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(bubbleShape)
-                                    )
-                                    // Play overlay when paused
-                                    if (!isPlaying) {
+                                    if (isInlinePlaying) {
+                                        // ── Inline playback — click to go full-screen ──
                                         Box(
                                             modifier = Modifier
-                                                .fillMaxSize()
-                                                .background(Color.Black.copy(alpha = 0.3f))
-                                                .clickable {
-                                                    exoPlayer.play()
-                                                    isPlaying = true
-                                                },
+                                                .widthIn(max = 210.dp)
+                                                .heightIn(max = 280.dp)
+                                                .clip(bubbleShape)
+                                                .clickable(
+                                                    interactionSource = remember { MutableInteractionSource() },
+                                                    indication = null
+                                                ) { onVideoClick?.invoke() },
                                             contentAlignment = Alignment.Center
                                         ) {
+                                            AndroidView(
+                                                factory = { ctx ->
+                                                    PlayerView(ctx).apply {
+                                                        player = inlineExoPlayer
+                                                        useController = false
+                                                        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                                    }
+                                                },
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clip(bubbleShape)
+                                            )
+                                            LaunchedEffect(Unit) { inlineExoPlayer.play() }
+                                        }
+                                    } else {
+                                        // ── Thumbnail view ──
+                                        Box(
+                                            modifier = Modifier
+                                                .widthIn(max = 210.dp)
+                                                .heightIn(max = 280.dp)
+                                                .clip(bubbleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            val bmp = thumbnailBitmap
+                                            if (bmp != null) {
+                                                Image(
+                                                    bitmap = bmp.asImageBitmap(),
+                                                    contentDescription = "Video thumbnail",
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier
+                                                        .widthIn(max = 210.dp)
+                                                        .heightIn(max = 280.dp)
+                                                        .clip(bubbleShape)
+                                                )
+                                            } else {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .background(Color(0xFF1A1A1A))
+                                                )
+                                            }
+                                            // Center play button — triggers inline playback
                                             Box(
                                                 modifier = Modifier
                                                     .size(52.dp)
                                                     .clip(CircleShape)
-                                                    .background(Color.White.copy(alpha = 0.85f)),
+                                                    .background(Color.White.copy(alpha = 0.85f))
+                                                    .clickable(
+                                                        interactionSource = remember { MutableInteractionSource() },
+                                                        indication = null
+                                                    ) { isInlinePlaying = true },
                                                 contentAlignment = Alignment.Center
                                             ) {
                                                 Icon(
@@ -1887,33 +2075,48 @@ fun MessageBubble(
                                                     modifier = Modifier.size(30.dp)
                                                 )
                                             }
+                                            // Duration badge bottom-right
+                                            if (durationText.isNotEmpty()) {
+                                                Text(
+                                                    text = durationText,
+                                                    color = Color.White,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    modifier = Modifier
+                                                        .align(Alignment.BottomEnd)
+                                                        .padding(8.dp)
+                                                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
+                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
                                         }
                                     }
                                 }
-                            }
-                            // Layer 2: reaction badge overlay
-                            if (reactions.isNotEmpty()) {
-                                val displayEmoji = reactions.values.groupBy { e: String -> e }.maxByOrNull { entry -> entry.value.size }?.key ?: reactions.values.first()
-                                val count = reactions.size
-                                Box(modifier = Modifier.matchParentSize()) {
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.BottomEnd)
-                                            .offset(x = 2.dp, y = 10.dp)
-                                            .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
-                                            .background(nc.background, RoundedCornerShape(10.dp))
-                                            .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
-                                            .padding(horizontal = 4.dp, vertical = 1.dp)
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(displayEmoji, fontSize = 14.sp)
-                                            if (count > 1) {
-                                                Text(text = count.toString(), color = nc.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 1.dp))
+                                // Layer 2: reaction badge overlay
+                                if (reactions.isNotEmpty()) {
+                                    val displayEmoji = reactions.values.groupBy { e: String -> e }.maxByOrNull { entry -> entry.value.size }?.key ?: reactions.values.first()
+                                    val count = reactions.size
+                                    Box(modifier = Modifier.matchParentSize()) {
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.BottomEnd)
+                                                .offset(x = 2.dp, y = 10.dp)
+                                                .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
+                                                .background(nc.background, RoundedCornerShape(10.dp))
+                                                .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
+                                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(displayEmoji, fontSize = 14.sp)
+                                                if (count > 1) {
+                                                    Text(text = count.toString(), color = nc.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 1.dp))
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
+                            if (!isMe) ForwardBtn()
                         }
                     } else if (messageType == Constants.MESSAGE_TYPE_VOICE && !isRecalled) {
                         // ── Voice bubble: overlay reaction badge ──
@@ -1966,240 +2169,369 @@ fun MessageBubble(
                         val posSecs = (voicePositionMs / 1000) % 60
                         val positionText = String.format("%d:%02d", posMins, posSecs)
 
-                        Box(
-                            modifier = Modifier
-                                .widthIn(max = 260.dp)
-                                .then(if (reactions.isNotEmpty()) Modifier.padding(bottom = 12.dp) else Modifier)
-                        ) {
-                            // Layer 1: main bubble
+                        @Composable
+                        fun ForwardBtn() {
                             Box(
                                 modifier = Modifier
-                                    .combinedClickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null,
-                                        onClick = {},
-                                        onLongClick = onLongClick
-                                    )
-                                    .background(color = if (isMe) nc.sentBubble else nc.receivedBubble, shape = bubbleShape)
-                                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF2A2A2A))
+                                    .clickable { onForward?.invoke() },
+                                contentAlignment = Alignment.Center
                             ) {
-                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.Reply,
+                                    contentDescription = "Chuyển tiếp",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp).graphicsLayer(scaleX = -1f)
+                                )
+                            }
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (isMe) ForwardBtn()
+                            Box(
+                                modifier = Modifier
+                                    .widthIn(max = 260.dp)
+                                    .then(if (reactions.isNotEmpty()) Modifier.padding(bottom = 12.dp) else Modifier)
+                            ) {
+                                // Layer 1: main bubble
+                                Box(
+                                    modifier = Modifier
+                                        .combinedClickable(
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null,
+                                            onClick = {},
+                                            onLongClick = onLongClick
+                                        )
+                                        .background(color = if (isMe) nc.sentBubble else nc.receivedBubble, shape = bubbleShape)
+                                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                                ) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(36.dp)
+                                                    .clip(CircleShape)
+                                                    .background(if (isMe) nc.sentBubbleText.copy(alpha = 0.15f) else nc.receivedBubbleText.copy(alpha = 0.15f))
+                                                    .clickable {
+                                                        if (isPrepared) {
+                                                            if (voiceIsPlaying) { voicePlayer.pause(); voiceIsPlaying = false }
+                                                            else { voicePlayer.start(); voiceIsPlaying = true }
+                                                        }
+                                                    },
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    if (voiceIsPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
+                                                    contentDescription = if (voiceIsPlaying) "Dừng" else "Phát",
+                                                    tint = if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+
+                                            Row(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .pointerInput(Unit) {
+                                                        detectDragGestures { change, _ ->
+                                                            val fraction = (change.position.x / size.width).coerceIn(0f, 1f)
+                                                            if (isPrepared) { voicePlayer.seekTo((fraction * voiceDurationMs).toInt()); voiceProgress = fraction }
+                                                        }
+                                                    }
+                                                    .pointerInput(Unit) {
+                                                        detectTapGestures { offset ->
+                                                            val fraction = (offset.x / size.width).coerceIn(0f, 1f)
+                                                            if (isPrepared) { voicePlayer.seekTo((fraction * voiceDurationMs).toInt()); voiceProgress = fraction }
+                                                        }
+                                                    },
+                                                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                val barCount = 20
+                                                val barColor = if (isMe) nc.sentBubbleText.copy(alpha = 0.5f) else nc.receivedBubbleText.copy(alpha = 0.5f)
+                                                val barColorActive = if (isMe) nc.sentBubbleText else nc.receivedBubbleText
+                                                val heights = listOf(8, 14, 20, 16, 10, 18, 22, 14, 8, 16, 20, 12, 18, 14, 10, 22, 16, 8, 14, 20)
+                                                val activeBar = (voiceProgress * barCount).toInt().coerceIn(0, barCount - 1)
+                                                for (i in 0 until barCount) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .width(3.dp)
+                                                            .height(heights[i % heights.size].dp)
+                                                            .clip(RoundedCornerShape(2.dp))
+                                                            .background(if (i <= activeBar) barColorActive else barColor)
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        Text(
+                                            text = if (voiceIsPlaying) "$positionText / $durationText" else durationText,
+                                            color = if (isMe) nc.sentBubbleText.copy(alpha = 0.7f) else nc.receivedBubbleText.copy(alpha = 0.7f),
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                }
+                                // Layer 2: reaction badge overlay
+                                if (reactions.isNotEmpty()) {
+                                    val displayEmoji = reactions.values.groupBy { e: String -> e }.maxByOrNull { entry -> entry.value.size }?.key ?: reactions.values.first()
+                                    val count = reactions.size
+                                    Box(modifier = Modifier.matchParentSize()) {
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.BottomEnd)
+                                                .offset(x = 2.dp, y = 10.dp)
+                                                .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
+                                                .background(nc.background, RoundedCornerShape(10.dp))
+                                                .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
+                                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(displayEmoji, fontSize = 14.sp)
+                                                if (count > 1) {
+                                                    Text(text = count.toString(), color = nc.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 1.dp))
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if (!isMe) ForwardBtn()
+                        }
+                    } else if (messageType == Constants.MESSAGE_TYPE_FILE && !isRecalled) {
+                        // ── File bubble: overlay reaction badge + forward button ──
+                        val context = LocalContext.current
+                        val fileUrl = text
+                        val fileName = message?.fileName ?: "File"
+                        val fileSize = message?.fileSize ?: 0L
+
+                        @Composable
+                        fun ForwardBtn() {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF2A2A2A))
+                                    .clickable { onForward?.invoke() },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.Reply,
+                                    contentDescription = "Chuyển tiếp",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp).graphicsLayer(scaleX = -1f)
+                                )
+                            }
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (isMe) ForwardBtn()
+                            Box(
+                                modifier = Modifier
+                                    .widthIn(max = 220.dp)
+                                    .then(if (reactions.isNotEmpty()) Modifier.padding(bottom = 12.dp) else Modifier)
+                            ) {
+                                // Layer 1: main bubble
+                                Box(
+                                    modifier = Modifier
+                                        .combinedClickable(
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null,
+                                            onClick = {
+                                                try {
+                                                    val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(fileUrl))
+                                                    context.startActivity(intent)
+                                                } catch (_: Exception) {
+                                                    android.widget.Toast.makeText(context, "Không thể mở file", android.widget.Toast.LENGTH_SHORT).show()
+                                                }
+                                            },
+                                            onLongClick = onLongClick
+                                        )
+                                        .background(color = if (isMe) nc.sentBubble else nc.receivedBubble, shape = bubbleShape)
+                                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                                ) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
                                         Box(
                                             modifier = Modifier
-                                                .size(36.dp)
-                                                .clip(CircleShape)
-                                                .background(if (isMe) nc.sentBubbleText.copy(alpha = 0.15f) else nc.receivedBubbleText.copy(alpha = 0.15f))
-                                                .clickable {
-                                                    if (isPrepared) {
-                                                        if (voiceIsPlaying) { voicePlayer.pause(); voiceIsPlaying = false }
-                                                        else { voicePlayer.start(); voiceIsPlaying = true }
-                                                    }
-                                                },
+                                                .size(40.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(if (isMe) nc.sentBubbleText.copy(alpha = 0.12f) else nc.receivedBubbleText.copy(alpha = 0.12f)),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(
-                                                if (voiceIsPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
-                                                contentDescription = if (voiceIsPlaying) "Dừng" else "Phát",
+                                                Icons.Default.InsertDriveFile,
+                                                contentDescription = null,
                                                 tint = if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
-                                                modifier = Modifier.size(20.dp)
+                                                modifier = Modifier.size(22.dp)
                                             )
                                         }
-
-                                        Row(
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(text = fileName, color = if (isMe) nc.sentBubbleText else nc.receivedBubbleText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                            if (fileSize > 0) {
+                                                Text(text = fileSize.toReadableFileSize(), color = if (isMe) nc.sentBubbleText.copy(alpha = 0.6f) else nc.receivedBubbleText.copy(alpha = 0.6f), fontSize = 11.sp)
+                                            }
+                                        }
+                                    }
+                                }
+                                // Layer 2: reaction badge overlay
+                                if (reactions.isNotEmpty()) {
+                                    val displayEmoji = reactions.values.groupBy { e: String -> e }.maxByOrNull { entry -> entry.value.size }?.key ?: reactions.values.first()
+                                    val count = reactions.size
+                                    Box(modifier = Modifier.matchParentSize()) {
+                                        Box(
                                             modifier = Modifier
-                                                .weight(1f)
-                                                .pointerInput(Unit) {
-                                                    detectDragGestures { change, _ ->
-                                                        val fraction = (change.position.x / size.width).coerceIn(0f, 1f)
-                                                        if (isPrepared) { voicePlayer.seekTo((fraction * voiceDurationMs).toInt()); voiceProgress = fraction }
-                                                    }
-                                                }
-                                                .pointerInput(Unit) {
-                                                    detectTapGestures { offset ->
-                                                        val fraction = (offset.x / size.width).coerceIn(0f, 1f)
-                                                        if (isPrepared) { voicePlayer.seekTo((fraction * voiceDurationMs).toInt()); voiceProgress = fraction }
-                                                    }
-                                                },
-                                            horizontalArrangement = Arrangement.spacedBy(2.dp),
-                                            verticalAlignment = Alignment.CenterVertically
+                                                .align(Alignment.BottomEnd)
+                                                .offset(x = 2.dp, y = 10.dp)
+                                                .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
+                                                .background(nc.background, RoundedCornerShape(10.dp))
+                                                .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
+                                                .padding(horizontal = 4.dp, vertical = 1.dp)
                                         ) {
-                                            val barCount = 20
-                                            val barColor = if (isMe) nc.sentBubbleText.copy(alpha = 0.5f) else nc.receivedBubbleText.copy(alpha = 0.5f)
-                                            val barColorActive = if (isMe) nc.sentBubbleText else nc.receivedBubbleText
-                                            val heights = listOf(8, 14, 20, 16, 10, 18, 22, 14, 8, 16, 20, 12, 18, 14, 10, 22, 16, 8, 14, 20)
-                                            val activeBar = (voiceProgress * barCount).toInt().coerceIn(0, barCount - 1)
-                                            for (i in 0 until barCount) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .width(3.dp)
-                                                        .height(heights[i % heights.size].dp)
-                                                        .clip(RoundedCornerShape(2.dp))
-                                                        .background(if (i <= activeBar) barColorActive else barColor)
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    Text(
-                                        text = if (voiceIsPlaying) "$positionText / $durationText" else durationText,
-                                        color = if (isMe) nc.sentBubbleText.copy(alpha = 0.7f) else nc.receivedBubbleText.copy(alpha = 0.7f),
-                                        fontSize = 11.sp
-                                    )
-                                }
-                            }
-                            // Layer 2: reaction badge overlay
-                            if (reactions.isNotEmpty()) {
-                                val displayEmoji = reactions.values.groupBy { e: String -> e }.maxByOrNull { entry -> entry.value.size }?.key ?: reactions.values.first()
-                                val count = reactions.size
-                                Box(modifier = Modifier.matchParentSize()) {
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.BottomEnd)
-                                            .offset(x = 2.dp, y = 10.dp)
-                                            .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
-                                            .background(nc.background, RoundedCornerShape(10.dp))
-                                            .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
-                                            .padding(horizontal = 4.dp, vertical = 1.dp)
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(displayEmoji, fontSize = 14.sp)
-                                            if (count > 1) {
-                                                Text(text = count.toString(), color = nc.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 1.dp))
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(displayEmoji, fontSize = 14.sp)
+                                                if (count > 1) {
+                                                    Text(text = count.toString(), color = nc.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 1.dp))
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
-                        }
-                    } else if (messageType == Constants.MESSAGE_TYPE_FILE && !isRecalled) {
-                        // ── File bubble: overlay reaction badge ──
-                        val context = LocalContext.current
-                        val fileUrl = text
-                        val fileName = message?.fileName ?: "File"
-                        val fileSize = message?.fileSize ?: 0L
-
-                        Box(
-                            modifier = Modifier
-                                .widthIn(max = 260.dp)
-                                .then(if (reactions.isNotEmpty()) Modifier.padding(bottom = 12.dp) else Modifier)
-                        ) {
-                            // Layer 1: main bubble
-                            Box(
-                                modifier = Modifier
-                                    .combinedClickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null,
-                                        onClick = {
-                                            try {
-                                                val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(fileUrl))
-                                                context.startActivity(intent)
-                                            } catch (_: Exception) {
-                                                android.widget.Toast.makeText(context, "Không thể mở file", android.widget.Toast.LENGTH_SHORT).show()
-                                            }
-                                        },
-                                        onLongClick = onLongClick
-                                    )
-                                    .background(color = if (isMe) nc.sentBubble else nc.receivedBubble, shape = bubbleShape)
-                                    .padding(horizontal = 12.dp, vertical = 10.dp)
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(40.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(if (isMe) nc.sentBubbleText.copy(alpha = 0.12f) else nc.receivedBubbleText.copy(alpha = 0.12f)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            Icons.Default.InsertDriveFile,
-                                            contentDescription = null,
-                                            tint = if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
-                                            modifier = Modifier.size(22.dp)
-                                        )
-                                    }
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(text = fileName, color = if (isMe) nc.sentBubbleText else nc.receivedBubbleText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                        if (fileSize > 0) {
-                                            Text(text = fileSize.toReadableFileSize(), color = if (isMe) nc.sentBubbleText.copy(alpha = 0.6f) else nc.receivedBubbleText.copy(alpha = 0.6f), fontSize = 11.sp)
-                                        }
-                                    }
-                                }
-                            }
-                            // Layer 2: reaction badge overlay
-                            if (reactions.isNotEmpty()) {
-                                val displayEmoji = reactions.values.groupBy { e: String -> e }.maxByOrNull { entry -> entry.value.size }?.key ?: reactions.values.first()
-                                val count = reactions.size
-                                Box(modifier = Modifier.matchParentSize()) {
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.BottomEnd)
-                                            .offset(x = 2.dp, y = 10.dp)
-                                            .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
-                                            .background(nc.background, RoundedCornerShape(10.dp))
-                                            .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
-                                            .padding(horizontal = 4.dp, vertical = 1.dp)
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(displayEmoji, fontSize = 14.sp)
-                                            if (count > 1) {
-                                                Text(text = count.toString(), color = nc.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 1.dp))
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                            if (!isMe) ForwardBtn()
                         }
                     } else {
                         // ── Text bubble: overlay reaction badge ──
-                        Box(
-                            modifier = Modifier
-                                .widthIn(max = 280.dp)
-                                .then(if (reactions.isNotEmpty()) Modifier.padding(bottom = 12.dp) else Modifier)
-                        ) {
-                            // Layer 1: main bubble
+                        val isUrl = remember(text) { Patterns.WEB_URL.matcher(text.trim()).matches() }
+                        @Composable
+                        fun ForwardBtn() {
                             Box(
                                 modifier = Modifier
-                                    .combinedClickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null,
-                                        onClick = {},
-                                        onLongClick = onLongClick
-                                    )
-                                    .background(color = if (isMe) nc.sentBubble else nc.receivedBubble, shape = bubbleShape)
-                                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF2A2A2A))
+                                    .clickable { onForward?.invoke() },
+                                contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = text,
-                                    color = if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
-                                    fontSize = 15.sp,
-                                    lineHeight = 20.sp
+                                Icon(
+                                    Icons.AutoMirrored.Filled.Reply,
+                                    contentDescription = "Chuyển tiếp",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp).graphicsLayer(scaleX = -1f)
                                 )
                             }
-                            // Layer 2: reaction badge overlay
-                            if (reactions.isNotEmpty()) {
-                                val displayEmoji = reactions.values.groupBy { e: String -> e }.maxByOrNull { entry -> entry.value.size }?.key ?: reactions.values.first()
-                                val count = reactions.size
-                                Box(modifier = Modifier.matchParentSize()) {
+                        }
+                        if (isUrl) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                if (isMe) ForwardBtn()
+                                Box(
+                                    modifier = Modifier
+                                        .widthIn(max = 280.dp)
+                                        .then(if (reactions.isNotEmpty()) Modifier.padding(bottom = 12.dp) else Modifier)
+                                ) {
+                                    // Layer 1: main bubble
                                     Box(
                                         modifier = Modifier
-                                            .align(Alignment.BottomEnd)
-                                            .offset(x = 2.dp, y = 10.dp)
-                                            .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
-                                            .background(nc.background, RoundedCornerShape(10.dp))
-                                            .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
-                                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                                            .combinedClickable(
+                                                interactionSource = remember { MutableInteractionSource() },
+                                                indication = null,
+                                                onClick = {},
+                                                onLongClick = onLongClick
+                                            )
+                                            .background(color = if (isMe) nc.sentBubble else nc.receivedBubble, shape = bubbleShape)
+                                            .padding(horizontal = 14.dp, vertical = 10.dp)
                                     ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(displayEmoji, fontSize = 14.sp)
-                                            if (count > 1) {
-                                                Text(text = count.toString(), color = nc.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 1.dp))
+                                        Text(
+                                            text = text,
+                                            color = if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
+                                            fontSize = 15.sp,
+                                            lineHeight = 20.sp
+                                        )
+                                    }
+                                    // Layer 2: reaction badge overlay
+                                    if (reactions.isNotEmpty()) {
+                                        val displayEmoji = reactions.values.groupBy { e: String -> e }.maxByOrNull { entry -> entry.value.size }?.key ?: reactions.values.first()
+                                        val count = reactions.size
+                                        Box(modifier = Modifier.matchParentSize()) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .align(Alignment.BottomEnd)
+                                                    .offset(x = 2.dp, y = 10.dp)
+                                                    .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
+                                                    .background(nc.background, RoundedCornerShape(10.dp))
+                                                    .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
+                                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(displayEmoji, fontSize = 14.sp)
+                                                    if (count > 1) {
+                                                        Text(text = count.toString(), color = nc.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 1.dp))
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                if (!isMe) ForwardBtn()
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .widthIn(max = 280.dp)
+                                    .then(if (reactions.isNotEmpty()) Modifier.padding(bottom = 12.dp) else Modifier)
+                            ) {
+                                // Layer 1: main bubble
+                                Box(
+                                    modifier = Modifier
+                                        .combinedClickable(
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null,
+                                            onClick = {},
+                                            onLongClick = onLongClick
+                                        )
+                                        .background(color = if (isMe) nc.sentBubble else nc.receivedBubble, shape = bubbleShape)
+                                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                                ) {
+                                    Text(
+                                        text = text,
+                                        color = if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
+                                        fontSize = 15.sp,
+                                        lineHeight = 20.sp
+                                    )
+                                }
+                                // Layer 2: reaction badge overlay
+                                if (reactions.isNotEmpty()) {
+                                    val displayEmoji = reactions.values.groupBy { e: String -> e }.maxByOrNull { entry -> entry.value.size }?.key ?: reactions.values.first()
+                                    val count = reactions.size
+                                    Box(modifier = Modifier.matchParentSize()) {
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.BottomEnd)
+                                                .offset(x = 2.dp, y = 10.dp)
+                                                .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
+                                                .background(nc.background, RoundedCornerShape(10.dp))
+                                                .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
+                                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(displayEmoji, fontSize = 14.sp)
+                                                if (count > 1) {
+                                                    Text(text = count.toString(), color = nc.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 1.dp))
+                                                }
                                             }
                                         }
                                     }
@@ -2391,6 +2723,241 @@ fun CallHistoryBubble(
                 fontSize = 11.sp,
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
             )
+        }
+    }
+}
+
+@androidx.annotation.OptIn(UnstableApi::class)
+@Composable
+fun FullScreenVideoPlayer(videoUrl: String, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val nc = MaterialTheme.nexusColors
+
+    val exoPlayer = remember(videoUrl) {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(MediaItem.fromUri(videoUrl))
+            prepare()
+        }
+    }
+
+    var isPlaying by remember { mutableStateOf(false) }
+    var currentPosition by remember { mutableStateOf(0L) }
+    var totalDuration by remember { mutableStateOf(0L) }
+    var controlsVisible by remember { mutableStateOf(true) }
+
+    DisposableEffect(videoUrl) {
+        val listener = object : androidx.media3.common.Player.Listener {
+            override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == androidx.media3.common.Player.STATE_READY) {
+                    totalDuration = exoPlayer.duration
+                }
+            }
+        }
+        exoPlayer.addListener(listener)
+        val progressScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+        val job = progressScope.launch {
+            while (true) {
+                delay(500)
+                if (exoPlayer.isPlaying) {
+                    currentPosition = exoPlayer.currentPosition
+                    totalDuration = exoPlayer.duration
+                }
+            }
+        }
+        onDispose {
+            job.cancel()
+            exoPlayer.removeListener(listener)
+            exoPlayer.release()
+        }
+    }
+
+    // Auto-hide controls after 3 seconds
+    LaunchedEffect(controlsVisible, isPlaying) {
+        if (controlsVisible && isPlaying) {
+            delay(3000)
+            controlsVisible = false
+        }
+    }
+
+    Dialog(
+        onDismissRequest = {
+            exoPlayer.pause()
+            onDismiss()
+        },
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) { controlsVisible = !controlsVisible }
+        ) {
+            // Video player — centered, fit aspect ratio, rounded corners
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                AndroidView(
+                    factory = { ctx ->
+                        PlayerView(ctx).apply {
+                            player = exoPlayer
+                            useController = false
+                            resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                )
+            }
+
+            // Controls overlay
+            AnimatedVisibility(
+                visible = controlsVisible,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    // Top bar
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.TopStart)
+                            .background(Color.Black.copy(alpha = 0.5f))
+                            .statusBarsPadding()
+                            .padding(horizontal = 12.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .clickable {
+                                    exoPlayer.pause()
+                                    onDismiss()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Đóng", tint = Color.White, modifier = Modifier.size(24.dp))
+                        }
+                        Spacer(modifier = Modifier.weight(1f))
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .clickable { },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Outlined.LibraryAdd, contentDescription = "Lưu", tint = Color.White, modifier = Modifier.size(22.dp))
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .clickable {
+                                    try {
+                                        val downloadManager = context.getSystemService(DownloadManager::class.java)
+                                        val request = DownloadManager.Request(Uri.parse(videoUrl))
+                                        request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                                        request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "NEXUS_video.mp4")
+                                        downloadManager.enqueue(request)
+                                    } catch (_: Exception) {}
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Download, contentDescription = "Tải xuống", tint = Color.White, modifier = Modifier.size(22.dp))
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .clickable { },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Thêm", tint = Color.White, modifier = Modifier.size(22.dp))
+                        }
+                    }
+
+                    // Center play/pause (when paused)
+                    if (!isPlaying) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .size(64.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.85f))
+                                .clickable { exoPlayer.play() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.PlayArrow,
+                                contentDescription = "Phát",
+                                tint = Color.Black,
+                                modifier = Modifier.size(36.dp)
+                            )
+                        }
+                    }
+
+                    // Bottom bar
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.BottomStart)
+                            .background(Color.Black.copy(alpha = 0.5f))
+                            .navigationBarsPadding()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .clickable {
+                                    if (isPlaying) exoPlayer.pause() else exoPlayer.play()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (isPlaying) "Tạm dừng" else "Phát",
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        Slider(
+                            value = if (totalDuration > 0) currentPosition.toFloat() / totalDuration else 0f,
+                            onValueChange = { fraction ->
+                                val newPos = (fraction * totalDuration).toLong()
+                                exoPlayer.seekTo(newPos)
+                                currentPosition = newPos
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = SliderDefaults.colors(
+                                thumbColor = Color.White,
+                                activeTrackColor = Color.White,
+                                inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                            )
+                        )
+                        val remainingMs = (totalDuration - currentPosition).coerceAtLeast(0)
+                        val remSecs = remainingMs / 1000
+                        val remMins = remSecs / 60
+                        val remSecsDisplay = remSecs % 60
+                        Text(
+                            text = "-%d:%02d".format(remMins, remSecsDisplay),
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
+                }
+            }
         }
     }
 }
