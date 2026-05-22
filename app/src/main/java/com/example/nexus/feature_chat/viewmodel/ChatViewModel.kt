@@ -293,6 +293,37 @@ class ChatViewModel @Inject constructor(
         _pendingImageUri.value = null
     }
 
+    fun sendMediaMessage(chatId: String, uri: Uri, context: Context) {
+        val mimeType = mediaUploader.getMimeType(context, uri) ?: ""
+        val isVideo = mimeType.startsWith("video")
+
+        _pendingImageUri.value = uri
+        _uploadState.value = UploadState.Uploading()
+
+        viewModelScope.launch {
+            try {
+                val resourceType = if (isVideo) "video" else "image"
+                val mediaUrl = mediaUploader.upload(context, uri, resourceType = resourceType)
+                if (mediaUrl != null) {
+                    if (isVideo) {
+                        chatRepository.sendVideoMessage(chatId, mediaUrl)
+                    } else {
+                        chatRepository.sendImageMessage(chatId, mediaUrl)
+                    }
+                    _uploadState.value = UploadState.Success
+                } else {
+                    _uploadState.value = UploadState.Error("Tải media thất bại")
+                }
+            } catch (e: Exception) {
+                _uploadState.value = UploadState.Error(e.message ?: "Lỗi tải media")
+            } finally {
+                _pendingImageUri.value = null
+                delay(500)
+                _uploadState.value = UploadState.Idle
+            }
+        }
+    }
+
     fun startVoiceRecording(context: Context) {
         voiceRecorderHelper.startRecording(context)
         _voiceState.value = VoiceRecordingState.Recording

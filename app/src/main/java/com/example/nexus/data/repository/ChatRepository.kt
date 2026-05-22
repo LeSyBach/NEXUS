@@ -180,6 +180,39 @@ class ChatRepository @Inject constructor(
         }
     }
 
+    suspend fun sendVideoMessage(chatId: String, videoUrl: String): Resource<Unit> {
+        return try {
+            val userId = authService.currentUserId ?: return Resource.Error("User not logged in")
+            val currentUser = firestoreService.getUser(userId)
+
+            val message = Message(
+                senderId = userId,
+                senderName = currentUser?.username ?: "Unknown",
+                text = videoUrl,
+                type = Constants.MESSAGE_TYPE_VIDEO
+            )
+            firestoreService.sendMessage(chatId, message)
+
+            val chat = firestoreService.getChat(chatId)
+            if (chat != null) {
+                val otherParticipants = chat.participants.filter { it != userId }
+                for (receiverId in otherParticipants) {
+                    notificationService.sendMessageNotification(
+                        receiverId = receiverId,
+                        senderName = currentUser?.displayName?.ifEmpty { currentUser.username } ?: "User",
+                        messageText = "🎬 Video",
+                        chatId = chatId,
+                        senderId = userId
+                    )
+                }
+            }
+
+            Resource.Success(Unit)
+        } catch (e: Exception) {
+            Resource.Error(e.message ?: "Failed to send video message")
+        }
+    }
+
     suspend fun sendVoiceMessage(chatId: String, voiceUrl: String, durationSec: Long): Resource<Unit> {
         return try {
             val userId = authService.currentUserId ?: return Resource.Error("User not logged in")

@@ -27,6 +27,7 @@ object Constants {
     const val MESSAGE_TYPE_IMAGE = "image"
     const val MESSAGE_TYPE_FILE = "file"
     const val MESSAGE_TYPE_VOICE = "voice"
+    const val MESSAGE_TYPE_VIDEO = "video"
     const val MESSAGE_TYPE_LOCATION = "location"
     const val MESSAGE_TYPE_SYSTEM = "system"
     const val MESSAGE_TYPE_CALL = "call"

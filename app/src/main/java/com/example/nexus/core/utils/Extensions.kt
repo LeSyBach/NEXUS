@@ -76,6 +76,14 @@ fun Context.createTempImageUri(): Uri {
     return FileProvider.getUriForFile(this, "${packageName}.fileprovider", imageFile)
 }
 
+fun Context.createTempVideoUri(): Uri {
+    val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+    val fileName = "NEXUS_${timeStamp}_"
+    val storageDir = externalCacheDir ?: cacheDir
+    val videoFile = File.createTempFile(fileName, ".mp4", storageDir)
+    return FileProvider.getUriForFile(this, "${packageName}.fileprovider", videoFile)
+}
+
 data class FileInfo(
     val fileName: String,
     val fileSizeBytes: Long,

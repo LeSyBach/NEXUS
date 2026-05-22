@@ -129,6 +129,10 @@ dependencies {
     implementation(libs.coil.compose)
     implementation("io.coil-kt:coil-compose:2.6.0")
 
+    // Video Playback (ExoPlayer / Media3)
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.ui)
+
 
     // DataStore
     implementation(libs.datastore.preferences)

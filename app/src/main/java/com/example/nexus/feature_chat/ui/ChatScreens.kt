@@ -23,7 +23,11 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -77,13 +81,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
+import androidx.media3.common.MediaItem
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.example.nexus.core.utils.Constants
 import com.example.nexus.core.utils.DateUtils
 import com.example.nexus.core.utils.Resource
 import com.example.nexus.core.utils.createTempImageUri
+import com.example.nexus.core.utils.createTempVideoUri
 import com.example.nexus.core.utils.toReadableFileSize
 import com.example.nexus.data.model.Chat
 import com.example.nexus.data.model.Message
@@ -574,6 +584,8 @@ fun ConversationScreen(
 ) {
     val nc = MaterialTheme.nexusColors
     var messageText by remember { mutableStateOf("") }
+    var showEmojiPicker by remember { mutableStateOf(false) }
+    val keyboardController = LocalSoftwareKeyboardController.current
     val messagesState = viewModel?.messagesState?.collectAsState()?.value ?: Resource.Idle
     val currentUserId = viewModel?.currentUserId
     val currentChat = viewModel?.currentChat?.collectAsState()?.value
@@ -588,19 +600,30 @@ fun ConversationScreen(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
         if (uri != null) {
-            viewModel?.sendImageMessage(chatId, uri, context)
+            viewModel?.sendMediaMessage(chatId, uri, context)
         }
     }
 
     var tempCameraUri by remember { mutableStateOf<Uri?>(null) }
+    var tempVideoUri by remember { mutableStateOf<Uri?>(null) }
+    var showCameraOptions by remember { mutableStateOf(false) }
 
     val takePictureLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
     ) { success: Boolean ->
         if (success && tempCameraUri != null) {
-            viewModel?.sendImageMessage(chatId, tempCameraUri!!, context)
+            viewModel?.sendMediaMessage(chatId, tempCameraUri!!, context)
         }
         tempCameraUri = null
+    }
+
+    val videoCaptureLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CaptureVideo()
+    ) { success: Boolean ->
+        if (success && tempVideoUri != null) {
+            viewModel?.sendMediaMessage(chatId, tempVideoUri!!, context)
+        }
+        tempVideoUri = null
     }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -944,6 +967,7 @@ fun ConversationScreen(
         if (replyingToMessage != null) {
             val replyPreviewText = when (replyingToMessage.type) {
                 Constants.MESSAGE_TYPE_IMAGE -> "📷 Hình ảnh"
+                Constants.MESSAGE_TYPE_VIDEO -> "🎬 Video"
                 Constants.MESSAGE_TYPE_VOICE -> "🎤 Tin nhắn thoại"
                 Constants.MESSAGE_TYPE_FILE -> "📎 ${replyingToMessage.fileName.ifEmpty { "Tệp" }}"
                 else -> replyingToMessage.text
@@ -1301,20 +1325,43 @@ fun ConversationScreen(
                     ) {
                         Icon(Icons.Outlined.AddCircleOutline, contentDescription = "Gửi file", tint = NexusPrimary, modifier = Modifier.size(24.dp))
                     }
-                    IconButton(
-                        onClick = {
-                            val uri = context.createTempImageUri()
-                            tempCameraUri = uri
-                            takePictureLauncher.launch(uri)
-                        },
-                        modifier = Modifier.size(44.dp)
-                    ) {
-                        Icon(Icons.Default.CameraAlt, contentDescription = "Camera", tint = NexusPrimary, modifier = Modifier.size(22.dp))
+                    Box {
+                        IconButton(
+                            onClick = { showCameraOptions = true },
+                            modifier = Modifier.size(44.dp)
+                        ) {
+                            Icon(Icons.Default.CameraAlt, contentDescription = "Camera", tint = NexusPrimary, modifier = Modifier.size(22.dp))
+                        }
+                        DropdownMenu(
+                            expanded = showCameraOptions,
+                            onDismissRequest = { showCameraOptions = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Chụp ảnh") },
+                                onClick = {
+                                    showCameraOptions = false
+                                    val uri = context.createTempImageUri()
+                                    tempCameraUri = uri
+                                    takePictureLauncher.launch(uri)
+                                },
+                                leadingIcon = { Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(20.dp)) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Quay video") },
+                                onClick = {
+                                    showCameraOptions = false
+                                    val uri = context.createTempVideoUri()
+                                    tempVideoUri = uri
+                                    videoCaptureLauncher.launch(uri)
+                                },
+                                leadingIcon = { Icon(Icons.Default.Videocam, contentDescription = null, modifier = Modifier.size(20.dp)) }
+                            )
+                        }
                     }
                     IconButton(
                         onClick = {
                             photoPickerLauncher.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
                             )
                         },
                         modifier = Modifier.size(44.dp)
@@ -1362,7 +1409,10 @@ fun ConversationScreen(
                                 )
                             }
                             IconButton(
-                                onClick = { },
+                                onClick = {
+                                    keyboardController?.hide()
+                                    showEmojiPicker = !showEmojiPicker
+                                },
                                 modifier = Modifier.size(32.dp)
                             ) {
                                 Icon(Icons.Default.EmojiEmotions, contentDescription = "Emoji", tint = NexusPrimary, modifier = Modifier.size(20.dp))
@@ -1375,6 +1425,9 @@ fun ConversationScreen(
                             if (messageText.isNotEmpty()) {
                                 viewModel?.sendMessage(chatId, messageText)
                                 messageText = ""
+                                showEmojiPicker = false
+                            } else {
+                                viewModel?.sendMessage(chatId, "👍")
                             }
                         },
                         modifier = Modifier.size(44.dp)
@@ -1490,8 +1543,61 @@ fun ConversationScreen(
             }
         }
     }
+
+    // ── Emoji Picker ──
+    if (showEmojiPicker) {
+        ModalBottomSheet(
+            onDismissRequest = { showEmojiPicker = false },
+            containerColor = nc.surfaceElevated,
+            scrimColor = Color.Black.copy(alpha = 0.5f)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(250.dp)
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .padding(bottom = 16.dp)
+            ) {
+                Text(
+                    text = "Emoji",
+                    color = nc.textPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(start = 8.dp, bottom = 12.dp)
+                )
+                val emojis = listOf(
+                    "😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂",
+                    "🙂", "😉", "😊", "😇", "🥰", "😍", "🤩", "😘",
+                    "😋", "😛", "😜", "🤪", "😝", "🤑", "🤗", "🤭",
+                    "😎", "🥳", "😏", "😢", "😭", "😤", "😡", "🥺",
+                    "😱", "😳", "🤯", "😴", "🤮", "👻", "💀", "☠️",
+                    "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍",
+                    "👍", "👎", "👏", "🙌", "🤝", "🙏", "✌️", "🤞",
+                    "🔥", "💯", "✨", "🎉", "🎊", "💐", "🌹", "⭐"
+                )
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(8),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(emojis) { emoji ->
+                        Box(
+                            modifier = Modifier
+                                .aspectRatio(1f)
+                                .clickable {
+                                    messageText += emoji
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(text = emoji, fontSize = 24.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
+@androidx.annotation.OptIn(UnstableApi::class)
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MessageBubble(
@@ -1605,6 +1711,7 @@ fun MessageBubble(
                             "Tin nhắn đã bị thu hồi"
                         } else when (replyTo.type) {
                             Constants.MESSAGE_TYPE_IMAGE -> "📷 Hình ảnh"
+                            Constants.MESSAGE_TYPE_VIDEO -> "🎬 Video"
                             Constants.MESSAGE_TYPE_VOICE -> "🎤 Tin nhắn thoại"
                             Constants.MESSAGE_TYPE_FILE -> "📎 Tệp"
                             else -> replyTo.text
@@ -1673,6 +1780,116 @@ fun MessageBubble(
                                     contentScale = ContentScale.FillWidth,
                                     modifier = Modifier.fillMaxWidth().clip(bubbleShape)
                                 )
+                            }
+                            // Layer 2: reaction badge overlay
+                            if (reactions.isNotEmpty()) {
+                                val displayEmoji = reactions.values.groupBy { e: String -> e }.maxByOrNull { entry -> entry.value.size }?.key ?: reactions.values.first()
+                                val count = reactions.size
+                                Box(modifier = Modifier.matchParentSize()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .offset(x = 2.dp, y = 10.dp)
+                                            .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
+                                            .background(nc.background, RoundedCornerShape(10.dp))
+                                            .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
+                                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(displayEmoji, fontSize = 14.sp)
+                                            if (count > 1) {
+                                                Text(text = count.toString(), color = nc.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 1.dp))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else if (messageType == Constants.MESSAGE_TYPE_VIDEO && !isRecalled) {
+                        // ── Video bubble: inline ExoPlayer ──
+                        val context = LocalContext.current
+                        val reactions = message?.reactions ?: emptyMap()
+                        var isPlaying by remember { mutableStateOf(false) }
+
+                        val exoPlayer = remember(text) {
+                            ExoPlayer.Builder(context).build().apply {
+                                setMediaItem(MediaItem.fromUri(text))
+                                prepare()
+                            }
+                        }
+
+                        DisposableEffect(text) {
+                            val listener = object : androidx.media3.common.Player.Listener {
+                                override fun onIsPlayingChanged(playing: Boolean) {
+                                    isPlaying = playing
+                                }
+                            }
+                            exoPlayer.addListener(listener)
+                            onDispose {
+                                exoPlayer.removeListener(listener)
+                                exoPlayer.release()
+                            }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .widthIn(max = 260.dp)
+                                .then(if (reactions.isNotEmpty()) Modifier.padding(bottom = 12.dp) else Modifier)
+                        ) {
+                            // Layer 1: main bubble
+                            Box(
+                                modifier = Modifier
+                                    .clip(bubbleShape)
+                                    .background(color = Color.Black, shape = bubbleShape)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = 300.dp)
+                                        .clip(bubbleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    AndroidView(
+                                        factory = { ctx ->
+                                            PlayerView(ctx).apply {
+                                                player = exoPlayer
+                                                useController = true
+                                                setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+                                            }
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(bubbleShape)
+                                    )
+                                    // Play overlay when paused
+                                    if (!isPlaying) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(Color.Black.copy(alpha = 0.3f))
+                                                .clickable {
+                                                    exoPlayer.play()
+                                                    isPlaying = true
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(52.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color.White.copy(alpha = 0.85f)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.PlayArrow,
+                                                    contentDescription = "Phát video",
+                                                    tint = Color.Black,
+                                                    modifier = Modifier.size(30.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             }
                             // Layer 2: reaction badge overlay
                             if (reactions.isNotEmpty()) {
@@ -2204,6 +2421,10 @@ fun UploadProgressBubble(
     isMe: Boolean
 ) {
     val nc = MaterialTheme.nexusColors
+    val context = LocalContext.current
+    val mimeType = context.contentResolver.getType(imageUri) ?: ""
+    val isVideo = mimeType.startsWith("video")
+
     val bubbleShape = RoundedCornerShape(
         topStart = if (isMe) 18.dp else 4.dp,
         topEnd = if (isMe) 4.dp else 18.dp,
@@ -2231,21 +2452,50 @@ fun UploadProgressBubble(
                         shape = bubbleShape
                     )
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    AsyncImage(
-                        model = imageUri,
-                        contentDescription = null,
-                        contentScale = ContentScale.FillWidth,
-                        alpha = 0.5f,
+                if (isVideo) {
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(bubbleShape)
-                    )
-                    CircularProgressIndicator(
-                        color = NexusPrimary,
-                        strokeWidth = 3.dp,
-                        modifier = Modifier.size(40.dp)
-                    )
+                            .aspectRatio(16f / 9f)
+                            .clip(bubbleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color(0xFF1A1A1A))
+                        )
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Default.Videocam,
+                                contentDescription = null,
+                                tint = Color.White.copy(alpha = 0.6f),
+                                modifier = Modifier.size(36.dp)
+                            )
+                            CircularProgressIndicator(
+                                color = Color.White,
+                                strokeWidth = 3.dp,
+                                modifier = Modifier.size(52.dp)
+                            )
+                        }
+                    }
+                } else {
+                    Box(contentAlignment = Alignment.Center) {
+                        AsyncImage(
+                            model = imageUri,
+                            contentDescription = null,
+                            contentScale = ContentScale.FillWidth,
+                            alpha = 0.5f,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(bubbleShape)
+                        )
+                        CircularProgressIndicator(
+                            color = NexusPrimary,
+                            strokeWidth = 3.dp,
+                            modifier = Modifier.size(40.dp)
+                        )
+                    }
                 }
             }
             if (isMe) {

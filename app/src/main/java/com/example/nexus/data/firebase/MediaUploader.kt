@@ -122,4 +122,11 @@ class MediaUploader @Inject constructor() {
         }
         return name
     }
+
+    /**
+     * Detect MIME type from URI via ContentResolver.
+     */
+    fun getMimeType(context: Context, uri: Uri): String? {
+        return context.contentResolver.getType(uri)
+    }
 }
