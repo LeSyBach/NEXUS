@@ -250,6 +250,9 @@ fun NexusNavGraph(
                 viewModel = chatViewModel,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToChat = { navController.popBackStack() },
+                onNavigateToSharedMedia = { targetChatId, initialTab ->
+                    navController.navigate(Screen.SharedMedia.createRoute(targetChatId, initialTab))
+                },
                 onStartCall = { receiverId, callType, receiverName ->
                     navController.navigate(Screen.OngoingCall.createRoute(
                         callId = java.util.UUID.randomUUID().toString(),
@@ -258,6 +261,23 @@ fun NexusNavGraph(
                         receiverName = receiverName
                     ))
                 }
+            )
+        }
+
+        composable(
+            route = Screen.SharedMedia.route,
+            arguments = listOf(
+                navArgument("chatId") { type = NavType.StringType },
+                navArgument("initialTab") { type = NavType.StringType; defaultValue = "media" }
+            )
+        ) { backStackEntry ->
+            val chatId = backStackEntry.arguments?.getString("chatId") ?: return@composable
+            val initialTab = backStackEntry.arguments?.getString("initialTab") ?: "media"
+            val sharedMediaViewModel: com.example.nexus.feature_chat.viewmodel.SharedMediaViewModel = hiltViewModel()
+            com.example.nexus.feature_chat.ui.SharedMediaScreen(
+                viewModel = sharedMediaViewModel,
+                initialTab = initialTab,
+                onNavigateBack = { navController.popBackStack() }
             )
         }
 

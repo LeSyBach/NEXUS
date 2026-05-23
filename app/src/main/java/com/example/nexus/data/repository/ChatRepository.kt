@@ -135,12 +135,24 @@ class ChatRepository @Inject constructor(
     suspend fun getSharedContentCounts(chatId: String): Triple<Int, Int, Int> {
         return try {
             val images = firestoreService.countMessagesByType(chatId, Constants.MESSAGE_TYPE_IMAGE)
+            val videos = firestoreService.countMessagesByType(chatId, Constants.MESSAGE_TYPE_VIDEO)
             val files = firestoreService.countMessagesByType(chatId, Constants.MESSAGE_TYPE_FILE)
             val links = firestoreService.countLinkMessages(chatId)
-            Triple(images, files, links)
+            Triple(images + videos, files, links)
         } catch (_: Exception) {
             Triple(0, 0, 0)
         }
+    }
+
+    suspend fun getSharedMedia(
+        chatId: String,
+        types: List<String>,
+        filterLinks: Boolean = false,
+        senderId: String? = null,
+        limit: Long = 30,
+        lastTimestamp: Timestamp? = null
+    ): Pair<List<Message>, Timestamp?> {
+        return firestoreService.getSharedMedia(chatId, types, filterLinks, senderId, limit, lastTimestamp)
     }
 
     suspend fun updateChatTheme(chatId: String, themeColor: String) {

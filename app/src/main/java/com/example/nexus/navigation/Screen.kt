@@ -42,6 +42,10 @@ sealed class Screen(
     data object ChatInfo : Screen("chat_info/{chatId}", "Thông tin chat") {
         fun createRoute(chatId: String) = "chat_info/${Uri.encode(chatId)}"
     }
+    data object SharedMedia : Screen("shared_media/{chatId}?initialTab={initialTab}", "Nội dung chia sẻ") {
+        fun createRoute(chatId: String, initialTab: String = "media") =
+            "shared_media/${Uri.encode(chatId)}?initialTab=$initialTab"
+    }
 
     // ── Contacts ──
     data object SearchUser : Screen("search_user", "Tìm kiếm")

@@ -41,6 +41,7 @@ fun ChatInfoScreen(
     viewModel: ChatViewModel? = null,
     onNavigateBack: () -> Unit,
     onNavigateToChat: (String) -> Unit,
+    onNavigateToSharedMedia: (String, String) -> Unit = { _, _ -> },
     onStartCall: (String, String, String) -> Unit = { _, _, _ -> }
 ) {
     val nc = MaterialTheme.nexusColors
@@ -313,21 +314,21 @@ fun ChatInfoScreen(
                 icon = Icons.Default.Image,
                 title = "Ảnh & Video",
                 count = sharedContentCounts?.first ?: 0,
-                onClick = { }
+                onClick = { onNavigateToSharedMedia(chatId, "media") }
             )
 
             SharedContentItem(
                 icon = Icons.Default.InsertDriveFile,
                 title = "File",
                 count = sharedContentCounts?.second ?: 0,
-                onClick = { }
+                onClick = { onNavigateToSharedMedia(chatId, "file") }
             )
 
             SharedContentItem(
                 icon = Icons.Default.Link,
                 title = "Liên kết",
                 count = sharedContentCounts?.third ?: 0,
-                onClick = { }
+                onClick = { onNavigateToSharedMedia(chatId, "link") }
             )
 
             Spacer(modifier = Modifier.height(16.dp))

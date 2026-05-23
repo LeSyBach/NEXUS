@@ -422,6 +422,116 @@ class FirestoreService @Inject constructor(
         return snapshot.count.toInt()
     }
 
+    /**
+     * Paginated query for shared media (images, videos, files) or link messages.
+     *
+     * Strategy:
+     * - Single type (image/video/file/links): server-side filter with composite index
+     * - Multiple types (image+video): two parallel queries merged by timestamp
+     * - Fallback to client-side filtering if composite index doesn't exist yet
+     *
+     * @return Pair of (filtered messages, cursor for next page)
+     */
+    suspend fun getSharedMedia(
+        chatId: String,
+        types: List<String>,
+        filterLinks: Boolean = false,
+        senderId: String? = null,
+        limit: Long = 30,
+        lastTimestamp: Timestamp? = null
+    ): Pair<List<Message>, Timestamp?> {
+        return try {
+            val col = firestore.collection(Constants.COLLECTION_CHATS)
+                .document(chatId)
+                .collection(Constants.COLLECTION_MESSAGES)
+
+            val results = if (filterLinks) {
+                // Links: whereEqualTo("hasLink", true)
+                val q = col.whereEqualTo("hasLink", true)
+                    .let { if (senderId != null) it.whereEqualTo("senderId", senderId) else it }
+                    .orderBy("timestamp", Query.Direction.DESCENDING)
+                    .let { if (lastTimestamp != null) it.startAfter(lastTimestamp) else it }
+                    .limit(limit)
+                q.get().await().toObjects(Message::class.java)
+
+            } else if (types.size == 1) {
+                // Single type: whereEqualTo("type", ...)
+                val q = col.whereEqualTo("type", types.first())
+                    .let { if (senderId != null) it.whereEqualTo("senderId", senderId) else it }
+                    .orderBy("timestamp", Query.Direction.DESCENDING)
+                    .let { if (lastTimestamp != null) it.startAfter(lastTimestamp) else it }
+                    .limit(limit)
+                q.get().await().toObjects(Message::class.java)
+
+            } else if (types.size > 1) {
+                // Multiple types: query each type separately, merge, sort, take limit
+                val deferreds = types.map { type ->
+                    var q: Query = col.whereEqualTo("type", type)
+                    if (senderId != null) q = q.whereEqualTo("senderId", senderId)
+                    q = q.orderBy("timestamp", Query.Direction.DESCENDING)
+                    if (lastTimestamp != null) q = q.startAfter(lastTimestamp)
+                    q.limit(limit).get().await().toObjects(Message::class.java)
+                }
+                deferreds.flatten()
+                    .sortedByDescending { it.timestamp }
+                    .take(limit.toInt())
+
+            } else {
+                emptyList()
+            }
+
+            val cursor = results.lastOrNull()?.timestamp
+            Pair(results, cursor)
+
+        } catch (e: Exception) {
+            // Fallback: composite index not created yet → client-side filtering
+            getSharedMediaFallback(chatId, types, filterLinks, senderId, limit, lastTimestamp)
+        }
+    }
+
+    /**
+     * Fallback: load batches of 100, filter client-side.
+     * Used when composite indexes haven't been created yet.
+     */
+    private suspend fun getSharedMediaFallback(
+        chatId: String,
+        types: List<String>,
+        filterLinks: Boolean,
+        senderId: String?,
+        limit: Long,
+        lastTimestamp: Timestamp?
+    ): Pair<List<Message>, Timestamp?> {
+        val matched = mutableListOf<Message>()
+        var cursor: Timestamp? = lastTimestamp
+        val needed = limit.toInt()
+
+        while (matched.size < needed) {
+            var query: Query = firestore.collection(Constants.COLLECTION_CHATS)
+                .document(chatId)
+                .collection(Constants.COLLECTION_MESSAGES)
+                .orderBy("timestamp", Query.Direction.DESCENDING)
+
+            if (cursor != null) query = query.startAfter(cursor)
+
+            val batch = query.limit(100).get().await().toObjects(Message::class.java)
+            if (batch.isEmpty()) break
+
+            val filtered = batch.filter { msg ->
+                val typeMatch = if (filterLinks) msg.hasLink
+                else if (types.isNotEmpty()) msg.type in types
+                else true
+                val senderMatch = senderId == null || msg.senderId == senderId
+                typeMatch && senderMatch
+            }
+
+            matched.addAll(filtered)
+            cursor = batch.lastOrNull()?.timestamp
+            if (batch.size < 100) break
+        }
+
+        return Pair(matched.take(needed), cursor)
+    }
+
     suspend fun clearChatMessages(chatId: String) {
         val messages = firestore.collection(Constants.COLLECTION_CHATS)
             .document(chatId)
