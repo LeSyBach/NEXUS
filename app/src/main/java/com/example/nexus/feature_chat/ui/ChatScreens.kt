@@ -616,6 +616,14 @@ fun ConversationScreen(
     val otherUser = viewModel?.otherUser?.collectAsState()?.value
     val listState = rememberLazyListState()
 
+    // Theme color for sent message bubbles (realtime from Firestore)
+    val themeColorHex = viewModel?.themeColor?.collectAsState()?.value ?: ""
+    val sentBubbleColor = remember(themeColorHex, nc.sentBubble) {
+        if (themeColorHex.isNotEmpty()) {
+            try { Color(android.graphics.Color.parseColor(themeColorHex)) } catch (_: Exception) { nc.sentBubble }
+        } else nc.sentBubble
+    }
+
     val uploadState = viewModel?.uploadState?.collectAsState()?.value ?: UploadState.Idle
     val pendingImageUri = viewModel?.pendingImageUri?.collectAsState()?.value
     val context = LocalContext.current
@@ -754,10 +762,14 @@ fun ConversationScreen(
     val otherId = otherUser?.uid ?: ""
 
     val isGroup = currentChat?.type == Constants.CHAT_TYPE_GROUP
+    val nicknames = viewModel?.nicknames?.collectAsState()?.value ?: emptyMap()
     val displayName = if (isGroup) {
         currentChat?.groupName?.ifEmpty { "Nhóm" } ?: "Nhóm"
     } else {
-        otherUser?.let { it.displayName.ifEmpty { it.username } } ?: "Đang tải..."
+        val nicknameForOther = if (otherId.isNotEmpty()) nicknames[otherId] else null
+        nicknameForOther?.takeIf { it.isNotBlank() }
+            ?: otherUser?.let { it.displayName.ifEmpty { it.username } }
+            ?: "Đang tải..."
     }
     val statusText = if (isGroup) {
         "${currentChat?.participants?.size ?: 0} thành viên"
@@ -829,13 +841,13 @@ fun ConversationScreen(
                 val otherId = otherUser?.uid ?: ""
                 if (otherId.isNotEmpty()) onStartCall(otherId, "voice", displayName)
             }) {
-                Icon(Icons.Default.Call, contentDescription = "Call", tint = NexusPrimary, modifier = Modifier.size(22.dp))
+                Icon(Icons.Default.Call, contentDescription = "Call", tint = sentBubbleColor, modifier = Modifier.size(22.dp))
             }
             IconButton(onClick = {
                 val otherId = otherUser?.uid ?: ""
                 if (otherId.isNotEmpty()) onStartCall(otherId, "video", displayName)
             }) {
-                Icon(Icons.Default.Videocam, contentDescription = "Video", tint = NexusPrimary, modifier = Modifier.size(22.dp))
+                Icon(Icons.Default.Videocam, contentDescription = "Video", tint = sentBubbleColor, modifier = Modifier.size(22.dp))
             }
         }
 
@@ -882,7 +894,7 @@ fun ConversationScreen(
                     is Resource.Loading -> {
                         item {
                             Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(color = NexusPrimary, strokeWidth = 2.dp)
+                                CircularProgressIndicator(color = sentBubbleColor, strokeWidth = 2.dp)
                             }
                         }
                     }
@@ -892,7 +904,8 @@ fun ConversationScreen(
                             item {
                                 UploadProgressBubble(
                                     imageUri = pendingImageUri,
-                                    isMe = true
+                                    isMe = true,
+                                    sentBubbleColor = sentBubbleColor
                                 )
                             }
                         }
@@ -905,13 +918,13 @@ fun ConversationScreen(
                                             modifier = Modifier
                                                 .size(72.dp)
                                                 .clip(CircleShape)
-                                                .background(NexusPrimary.copy(alpha = 0.1f)),
+                                                .background(sentBubbleColor.copy(alpha = 0.1f)),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(
                                                 Icons.Outlined.ChatBubbleOutline,
                                                 contentDescription = null,
-                                                tint = NexusPrimary.copy(alpha = 0.6f),
+                                                tint = sentBubbleColor.copy(alpha = 0.6f),
                                                 modifier = Modifier.size(36.dp)
                                             )
                                         }
@@ -962,6 +975,7 @@ fun ConversationScreen(
                                         dateSeparatorText = msg.timestamp?.toDate()?.let { DateUtils.formatDateSeparator(it.time) } ?: "",
                                         avatarInitial = senderInitial,
                                         showAvatar = !isMe && isLastFromSender,
+                                        sentBubbleColor = sentBubbleColor,
                                         onStartCall = {
                                             if (otherId.isNotEmpty()) onStartCall(otherId, msg.text, displayName)
                                         }
@@ -987,6 +1001,7 @@ fun ConversationScreen(
                                         message = msg,
                                         currentUserId = currentUserId,
                                         isSending = msg.isSending,
+                                        sentBubbleColor = sentBubbleColor,
                                         onLongClick = { showMessageMenu = Pair(chatId, msg) },
                                         onReply = {
                                             viewModel?.setReplyingMessage(msg)
@@ -1021,7 +1036,7 @@ fun ConversationScreen(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         CircularProgressIndicator(
-                                            color = NexusPrimary,
+                                            color = sentBubbleColor,
                                             strokeWidth = 2.dp,
                                             modifier = Modifier.size(24.dp)
                                         )
@@ -1094,7 +1109,7 @@ fun ConversationScreen(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(16.dp))
-                            .border(1.dp, NexusPrimary.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+                            .border(1.dp, sentBubbleColor.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
                             .background(nc.cardBg)
                             .clickable {
                                 val reply = smartReplies[index]
@@ -1146,13 +1161,13 @@ fun ConversationScreen(
                         modifier = Modifier
                             .width(3.dp)
                             .height(36.dp)
-                            .background(NexusPrimary.copy(alpha = 0.8f), RoundedCornerShape(2.dp))
+                            .background(sentBubbleColor.copy(alpha = 0.8f), RoundedCornerShape(2.dp))
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = replyHeaderText,
-                            color = NexusPrimary.copy(alpha = 0.85f),
+                            color = sentBubbleColor.copy(alpha = 0.85f),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
@@ -1302,7 +1317,7 @@ fun ConversationScreen(
                                     .padding(vertical = 14.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Default.Undo, contentDescription = null, tint = NexusPrimary, modifier = Modifier.size(22.dp))
+                                Icon(Icons.Default.Undo, contentDescription = null, tint = sentBubbleColor, modifier = Modifier.size(22.dp))
                                 Spacer(modifier = Modifier.width(14.dp))
                                 Text("Thu hồi", color = nc.textPrimary, fontSize = 15.sp)
                             }
@@ -1366,7 +1381,7 @@ fun ConversationScreen(
                         onClick = { viewModel?.stopVoiceRecording() },
                         modifier = Modifier.size(44.dp)
                     ) {
-                        Icon(Icons.Default.Pause, contentDescription = "Tạm dừng", tint = NexusPrimary, modifier = Modifier.size(24.dp))
+                        Icon(Icons.Default.Pause, contentDescription = "Tạm dừng", tint = sentBubbleColor, modifier = Modifier.size(24.dp))
                     }
 
                     // Timer
@@ -1406,7 +1421,7 @@ fun ConversationScreen(
                         modifier = Modifier
                             .size(44.dp)
                             .clip(CircleShape)
-                            .background(NexusPrimary)
+                            .background(sentBubbleColor)
                     ) {
                         Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Gửi", tint = Color.White, modifier = Modifier.size(20.dp))
                     }
@@ -1446,7 +1461,7 @@ fun ConversationScreen(
                         onClick = { viewModel?.reRecordVoice(context) },
                         modifier = Modifier.size(40.dp)
                     ) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Ghi lại", tint = NexusPrimary, modifier = Modifier.size(22.dp))
+                        Icon(Icons.Default.Refresh, contentDescription = "Ghi lại", tint = sentBubbleColor, modifier = Modifier.size(22.dp))
                     }
 
                     // Continue (play/resume preview)
@@ -1457,7 +1472,7 @@ fun ConversationScreen(
                         Icon(
                             if (playbackState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                             contentDescription = if (playbackState.isPlaying) "Tạm dừng" else "Tiếp tục",
-                            tint = NexusPrimary,
+                            tint = sentBubbleColor,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -1493,7 +1508,7 @@ fun ConversationScreen(
                                     .width(3.dp)
                                     .height(height)
                                     .clip(RoundedCornerShape(2.dp))
-                                    .background(if (i <= activeBar) NexusPrimary else nc.divider)
+                                    .background(if (i <= activeBar) sentBubbleColor else nc.divider)
                             )
                         }
                     }
@@ -1510,7 +1525,7 @@ fun ConversationScreen(
                         modifier = Modifier
                             .size(44.dp)
                             .clip(CircleShape)
-                            .background(NexusPrimary)
+                            .background(sentBubbleColor)
                     ) {
                         Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Gửi", tint = Color.White, modifier = Modifier.size(20.dp))
                     }
@@ -1530,14 +1545,14 @@ fun ConversationScreen(
                         onClick = { filePickerLauncher.launch(arrayOf("*/*")) },
                         modifier = Modifier.size(44.dp)
                     ) {
-                        Icon(Icons.Outlined.AddCircleOutline, contentDescription = "Gửi file", tint = NexusPrimary, modifier = Modifier.size(24.dp))
+                        Icon(Icons.Outlined.AddCircleOutline, contentDescription = "Gửi file", tint = sentBubbleColor, modifier = Modifier.size(24.dp))
                     }
                     Box {
                         IconButton(
                             onClick = { showCameraOptions = true },
                             modifier = Modifier.size(44.dp)
                         ) {
-                            Icon(Icons.Default.CameraAlt, contentDescription = "Camera", tint = NexusPrimary, modifier = Modifier.size(22.dp))
+                            Icon(Icons.Default.CameraAlt, contentDescription = "Camera", tint = sentBubbleColor, modifier = Modifier.size(22.dp))
                         }
                         DropdownMenu(
                             expanded = showCameraOptions,
@@ -1573,7 +1588,7 @@ fun ConversationScreen(
                         },
                         modifier = Modifier.size(44.dp)
                     ) {
-                        Icon(Icons.Default.Image, contentDescription = "Gallery", tint = NexusPrimary, modifier = Modifier.size(22.dp))
+                        Icon(Icons.Default.Image, contentDescription = "Gallery", tint = sentBubbleColor, modifier = Modifier.size(22.dp))
                     }
                     IconButton(
                         onClick = {
@@ -1588,7 +1603,7 @@ fun ConversationScreen(
                         },
                         modifier = Modifier.size(44.dp)
                     ) {
-                        Icon(Icons.Default.Mic, contentDescription = "Mic", tint = NexusPrimary, modifier = Modifier.size(24.dp))
+                        Icon(Icons.Default.Mic, contentDescription = "Mic", tint = sentBubbleColor, modifier = Modifier.size(24.dp))
                     }
 
                     Box(
@@ -1617,7 +1632,7 @@ fun ConversationScreen(
                                         }
                                     },
                                     textStyle = TextStyle(color = nc.textPrimary, fontSize = 15.sp),
-                                    cursorBrush = SolidColor(NexusPrimary),
+                                    cursorBrush = SolidColor(sentBubbleColor),
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .onFocusChanged { state ->
@@ -1636,7 +1651,7 @@ fun ConversationScreen(
                                 },
                                 modifier = Modifier.size(32.dp)
                             ) {
-                                Icon(Icons.Default.EmojiEmotions, contentDescription = "Emoji", tint = NexusPrimary, modifier = Modifier.size(20.dp))
+                                Icon(Icons.Default.EmojiEmotions, contentDescription = "Emoji", tint = sentBubbleColor, modifier = Modifier.size(20.dp))
                             }
                         }
                     }
@@ -1657,7 +1672,7 @@ fun ConversationScreen(
                         Icon(
                             if (isSendEnabled) Icons.AutoMirrored.Filled.Send else Icons.Default.ThumbUp,
                             contentDescription = if (isSendEnabled) "Send" else "Like",
-                            tint = NexusPrimary,
+                            tint = sentBubbleColor,
                             modifier = Modifier.size(24.dp)
                         )
                     }
@@ -1889,7 +1904,7 @@ fun ConversationScreen(
                     Icon(
                         Icons.Default.AutoAwesome,
                         contentDescription = null,
-                        tint = NexusPrimary,
+                        tint = sentBubbleColor,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -1907,7 +1922,7 @@ fun ConversationScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            CircularProgressIndicator(color = NexusPrimary, strokeWidth = 2.dp)
+                            CircularProgressIndicator(color = sentBubbleColor, strokeWidth = 2.dp)
                             Spacer(modifier = Modifier.height(16.dp))
                             Text("Đang tạo tóm tắt...", color = nc.textSecondary, fontSize = 14.sp)
                         }
@@ -1953,6 +1968,7 @@ fun MessageBubble(
     message: Message? = null,
     currentUserId: String? = null,
     isSending: Boolean = false,
+    sentBubbleColor: Color = MaterialTheme.nexusColors.sentBubble,
     onLongClick: (() -> Unit)? = null,
     onReply: (() -> Unit)? = null,
     onReact: ((String) -> Unit)? = null,
@@ -2156,7 +2172,7 @@ fun MessageBubble(
                                             onLongClick = onLongClick
                                         )
                                         .clip(bubbleShape)
-                                        .background(color = if (isMe) nc.sentBubble else nc.receivedBubble, shape = bubbleShape)
+                                        .background(color = if (isMe) sentBubbleColor else nc.receivedBubble, shape = bubbleShape)
                                 ) {
                                     AsyncImage(
                                         model = text,
@@ -2488,7 +2504,7 @@ fun MessageBubble(
                                             onClick = {},
                                             onLongClick = onLongClick
                                         )
-                                        .background(color = if (isMe) nc.sentBubble else nc.receivedBubble, shape = bubbleShape)
+                                        .background(color = if (isMe) sentBubbleColor else nc.receivedBubble, shape = bubbleShape)
                                         .padding(horizontal = 12.dp, vertical = 10.dp)
                                 ) {
                                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -2637,7 +2653,7 @@ fun MessageBubble(
                                             },
                                             onLongClick = onLongClick
                                         )
-                                        .background(color = if (isMe) nc.sentBubble else nc.receivedBubble, shape = bubbleShape)
+                                        .background(color = if (isMe) sentBubbleColor else nc.receivedBubble, shape = bubbleShape)
                                         .padding(horizontal = 12.dp, vertical = 10.dp)
                                 ) {
                                     Row(
@@ -2733,7 +2749,7 @@ fun MessageBubble(
                                                 onClick = {},
                                                 onLongClick = onLongClick
                                             )
-                                            .background(color = if (isMe) nc.sentBubble else nc.receivedBubble, shape = bubbleShape)
+                                            .background(color = if (isMe) sentBubbleColor else nc.receivedBubble, shape = bubbleShape)
                                             .padding(horizontal = 14.dp, vertical = 10.dp)
                                     ) {
                                         Text(
@@ -2784,7 +2800,7 @@ fun MessageBubble(
                                             onClick = {},
                                             onLongClick = onLongClick
                                         )
-                                        .background(color = if (isMe) nc.sentBubble else nc.receivedBubble, shape = bubbleShape)
+                                        .background(color = if (isMe) sentBubbleColor else nc.receivedBubble, shape = bubbleShape)
                                         .padding(horizontal = 14.dp, vertical = 10.dp)
                                 ) {
                                     Text(
@@ -2846,7 +2862,7 @@ fun MessageBubble(
             } else if (isMe && status.isNotEmpty()) {
                 Text(
                     text = when(status) { "seen" -> "Đã xem"; "delivered" -> "Đã nhận"; "recalled" -> ""; else -> "Đã gửi" },
-                    color = if (status == "seen") NexusPrimary else nc.textTertiary,
+                    color = if (status == "seen") sentBubbleColor else nc.textTertiary,
                     fontSize = 10.sp,
                     modifier = Modifier.padding(horizontal = 4.dp)
                 )
@@ -2864,6 +2880,7 @@ fun CallHistoryBubble(
     dateSeparatorText: String = "",
     avatarInitial: String = "",
     showAvatar: Boolean = false,
+    sentBubbleColor: Color = MaterialTheme.nexusColors.sentBubble,
     onStartCall: () -> Unit
 ) {
     val nc = MaterialTheme.nexusColors
@@ -3570,7 +3587,8 @@ fun TypingIndicator() {
 @Composable
 fun UploadProgressBubble(
     imageUri: Uri,
-    isMe: Boolean
+    isMe: Boolean,
+    sentBubbleColor: Color = MaterialTheme.nexusColors.sentBubble
 ) {
     val nc = MaterialTheme.nexusColors
     val context = LocalContext.current
@@ -3600,7 +3618,7 @@ fun UploadProgressBubble(
                     .widthIn(max = 240.dp)
                     .clip(bubbleShape)
                     .background(
-                        color = if (isMe) nc.sentBubble else nc.receivedBubble,
+                        color = if (isMe) sentBubbleColor else nc.receivedBubble,
                         shape = bubbleShape
                     )
             ) {

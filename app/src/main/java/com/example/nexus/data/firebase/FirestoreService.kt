@@ -5,6 +5,7 @@ import com.example.nexus.core.utils.Constants
 import com.example.nexus.data.model.*
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.AggregateSource
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.MetadataChanges
@@ -137,6 +138,19 @@ class FirestoreService @Inject constructor(
         awaitClose { listener.remove() }
     }
 
+    fun observeChat(chatId: String): Flow<Chat?> = callbackFlow {
+        val listener = firestore.collection(Constants.COLLECTION_CHATS)
+            .document(chatId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    close(error)
+                    return@addSnapshotListener
+                }
+                trySend(snapshot?.toObject(Chat::class.java))
+            }
+        awaitClose { listener.remove() }
+    }
+
     suspend fun findDirectChat(userId1: String, userId2: String): Chat? {
         val chats = firestore.collection(Constants.COLLECTION_CHATS)
             .whereEqualTo("type", Constants.CHAT_TYPE_DIRECT)
@@ -152,6 +166,26 @@ class FirestoreService @Inject constructor(
         firestore.collection(Constants.COLLECTION_CHATS)
             .document(chatId)
             .update(updates + ("updatedAt" to Timestamp.now()))
+            .await()
+    }
+
+    suspend fun updateChatTheme(chatId: String, themeColor: String) {
+        firestore.collection(Constants.COLLECTION_CHATS)
+            .document(chatId)
+            .update(mapOf(
+                "themeColor" to themeColor,
+                "updatedAt" to Timestamp.now()
+            ))
+            .await()
+    }
+
+    suspend fun updateChatNicknames(chatId: String, nicknames: Map<String, String>) {
+        firestore.collection(Constants.COLLECTION_CHATS)
+            .document(chatId)
+            .update(mapOf(
+                "nicknames" to nicknames,
+                "updatedAt" to Timestamp.now()
+            ))
             .await()
     }
 
@@ -186,10 +220,15 @@ class FirestoreService @Inject constructor(
     // ══════════════════════════════════════════════════════════════
 
     suspend fun sendMessage(chatId: String, message: Message): String {
+        val messageToSave = if (message.type == Constants.MESSAGE_TYPE_TEXT) {
+            val hasUrl = message.text.contains("http://") || message.text.contains("https://")
+            message.copy(hasLink = hasUrl)
+        } else message
+
         val docRef = firestore.collection(Constants.COLLECTION_CHATS)
             .document(chatId)
             .collection(Constants.COLLECTION_MESSAGES)
-            .add(message)
+            .add(messageToSave)
             .await()
 
         // Update the message with its document ID
@@ -364,24 +403,23 @@ class FirestoreService @Inject constructor(
     }
 
     suspend fun countMessagesByType(chatId: String, type: String): Int {
-        return firestore.collection(Constants.COLLECTION_CHATS)
+        val aggregateQuery = firestore.collection(Constants.COLLECTION_CHATS)
             .document(chatId)
             .collection(Constants.COLLECTION_MESSAGES)
             .whereEqualTo("type", type)
-            .get()
-            .await()
-            .size()
+            .count()
+        val snapshot = aggregateQuery.get(AggregateSource.SERVER).await()
+        return snapshot.count.toInt()
     }
 
     suspend fun countLinkMessages(chatId: String): Int {
-        val allMessages = firestore.collection(Constants.COLLECTION_CHATS)
+        val aggregateQuery = firestore.collection(Constants.COLLECTION_CHATS)
             .document(chatId)
             .collection(Constants.COLLECTION_MESSAGES)
-            .whereEqualTo("type", Constants.MESSAGE_TYPE_TEXT)
-            .get()
-            .await()
-            .toObjects(Message::class.java)
-        return allMessages.count { it.text.contains("http://") || it.text.contains("https://") }
+            .whereEqualTo("hasLink", true)
+            .count()
+        val snapshot = aggregateQuery.get(AggregateSource.SERVER).await()
+        return snapshot.count.toInt()
     }
 
     suspend fun clearChatMessages(chatId: String) {

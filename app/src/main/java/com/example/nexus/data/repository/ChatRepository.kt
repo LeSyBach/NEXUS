@@ -143,6 +143,18 @@ class ChatRepository @Inject constructor(
         }
     }
 
+    suspend fun updateChatTheme(chatId: String, themeColor: String) {
+        firestoreService.updateChatTheme(chatId, themeColor)
+    }
+
+    suspend fun updateChatNicknames(chatId: String, nicknames: Map<String, String>) {
+        firestoreService.updateChatNicknames(chatId, nicknames)
+    }
+
+    fun observeChat(chatId: String): Flow<Chat?> {
+        return firestoreService.observeChat(chatId)
+    }
+
     suspend fun clearChatMessages(chatId: String) {
         firestoreService.clearChatMessages(chatId)
     }

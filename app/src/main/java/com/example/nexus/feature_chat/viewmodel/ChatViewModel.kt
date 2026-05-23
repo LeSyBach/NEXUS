@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.nexus.core.utils.Constants
+import com.example.nexus.core.utils.MuteManager
 import com.example.nexus.core.utils.NetworkMonitor
 import com.example.nexus.core.utils.Resource
 import com.example.nexus.core.utils.getFileInfo
@@ -63,6 +64,7 @@ class ChatViewModel @Inject constructor(
     private val voiceRecorderHelper: VoiceRecorderHelper,
     val audioPlayerHelper: AudioPlayerHelper,
     private val aiChatService: AiChatService,
+    private val muteManager: MuteManager,
     networkMonitor: NetworkMonitor
 ) : ViewModel() {
 
@@ -90,6 +92,15 @@ class ChatViewModel @Inject constructor(
 
     private val _sharedContentCounts = MutableStateFlow(Triple(0, 0, 0))
     val sharedContentCounts: StateFlow<Triple<Int, Int, Int>> = _sharedContentCounts
+
+    private val _themeColor = MutableStateFlow("")
+    val themeColor: StateFlow<String> = _themeColor
+
+    private val _nicknames = MutableStateFlow<Map<String, String>>(emptyMap())
+    val nicknames: StateFlow<Map<String, String>> = _nicknames
+
+    private val _isMuted = MutableStateFlow(false)
+    val isMuted: StateFlow<Boolean> = _isMuted
 
     private val _clearChatSuccess = MutableSharedFlow<Boolean>()
     val clearChatSuccess = _clearChatSuccess.asSharedFlow()
@@ -180,6 +191,8 @@ class ChatViewModel @Inject constructor(
         _messagesState.value = Resource.Loading
         _otherUser.value = null
         _currentChat.value = null
+
+        observeChatRealtime(chatId)
 
         viewModelScope.launch {
             try {
@@ -301,6 +314,10 @@ class ChatViewModel @Inject constructor(
         val myId = currentUserId ?: return chat.groupName
         val otherId = chat.participants.firstOrNull { it != myId }
         if (otherId == null) return chat.groupName
+
+        // Check nickname set by current user for the other person
+        val nickname = chat.nicknames[otherId] ?: chat.nicknames[myId]
+        if (!nickname.isNullOrBlank()) return nickname
 
         userCache[otherId]?.let { user ->
             return user.displayName.ifEmpty { user.username }
@@ -685,6 +702,9 @@ class ChatViewModel @Inject constructor(
         _olderMessages.value = emptyList()
         _isLoadingMoreMessages.value = false
         _hasMoreMessages.value = true
+        _themeColor.value = ""
+        _nicknames.value = emptyMap()
+        _isMuted.value = false
     }
 
     fun loadSharedContentCounts(chatId: String) {
@@ -692,6 +712,50 @@ class ChatViewModel @Inject constructor(
             try {
                 _sharedContentCounts.value = chatRepository.getSharedContentCounts(chatId)
             } catch (_: Exception) {}
+        }
+    }
+
+    fun updateChatTheme(chatId: String, color: String) {
+        viewModelScope.launch {
+            try {
+                chatRepository.updateChatTheme(chatId, color)
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun updateChatNickname(chatId: String, targetUserId: String, nickname: String) {
+        viewModelScope.launch {
+            try {
+                val current = _nicknames.value.toMutableMap()
+                if (nickname.isBlank()) current.remove(targetUserId)
+                else current[targetUserId] = nickname
+                chatRepository.updateChatNicknames(chatId, current)
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun setMuted(chatId: String, muted: Boolean) {
+        viewModelScope.launch {
+            try {
+                muteManager.setMuted(chatId, muted)
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun observeChatRealtime(chatId: String) {
+        viewModelScope.launch {
+            chatRepository.observeChat(chatId).collect { chat ->
+                if (chat != null) {
+                    _currentChat.value = chat
+                    _themeColor.value = chat.themeColor
+                    _nicknames.value = chat.nicknames
+                }
+            }
+        }
+        viewModelScope.launch {
+            muteManager.isMutedFlow(chatId).collect { muted ->
+                _isMuted.value = muted
+            }
         }
     }
 

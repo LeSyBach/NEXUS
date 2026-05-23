@@ -4,6 +4,7 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -47,9 +48,12 @@ fun ChatInfoScreen(
     val otherUser = viewModel?.otherUser?.collectAsState()?.value
     val sharedContentCounts = viewModel?.sharedContentCounts?.collectAsState()?.value
 
-    var notificationsEnabled by remember { mutableStateOf(true) }
-    var selectedTheme by remember { mutableIntStateOf(0) }
-    var nickname by remember { mutableStateOf("") }
+    // Realtime state from ViewModel (synced with Firestore / DataStore)
+    val isMuted by (viewModel?.isMuted?.collectAsState()?.value ?: false).let { remember { mutableStateOf(it) } }
+    val mutedState = viewModel?.isMuted?.collectAsState()?.value ?: false
+    val themeColorHex = viewModel?.themeColor?.collectAsState()?.value ?: ""
+    val nicknames = viewModel?.nicknames?.collectAsState()?.value ?: emptyMap()
+
     var showThemeDialog by remember { mutableStateOf(false) }
     var showNicknameDialog by remember { mutableStateOf(false) }
     var showBlockUserDialog by remember { mutableStateOf(false) }
@@ -60,6 +64,13 @@ fun ChatInfoScreen(
     }
 
     val displayName = otherUser?.let { it.displayName.ifEmpty { it.username } } ?: "Đang tải..."
+    val otherUserId = otherUser?.uid ?: ""
+
+    // Resolve nickname: use the one set by current user for the other user
+    val currentUserId = viewModel?.currentUserId ?: ""
+    val myNicknameForOther = nicknames[otherUserId] ?: ""
+    val displayNameWithNickname = myNicknameForOther.ifEmpty { displayName }
+
     val avatarInitial = displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
     val isOnline = otherUser?.status == Constants.USER_STATUS_ONLINE
     val lastSeenText = if (isOnline) {
@@ -69,12 +80,22 @@ fun ChatInfoScreen(
     }
 
     val themeOptions = listOf(
-        "Xanh dương" to Color(0xFF3B82F6),
-        "Tím" to Color(0xFF8B5CF6),
-        "Xanh lá" to Color(0xFF22C55E),
-        "Đỏ" to Color(0xFFEF4444),
-        "Cam" to Color(0xFFF97316)
+        "" to Color(0xFF3B82F6),        // Default (blue)
+        "#3B82F6" to Color(0xFF3B82F6),  // Xanh dương
+        "#8B5CF6" to Color(0xFF8B5CF6),  // Tím
+        "#22C55E" to Color(0xFF22C55E),  // Xanh lá
+        "#EF4444" to Color(0xFFEF4444),  // Đỏ
+        "#F97316" to Color(0xFFF97316)   // Cam
     )
+    val themeAccentColor = remember(themeColorHex) {
+        if (themeColorHex.isNotEmpty()) {
+            try { Color(android.graphics.Color.parseColor(themeColorHex)) } catch (_: Exception) { NexusPrimary }
+        } else NexusPrimary
+    }
+    val themeNames = listOf("Mặc định", "Xanh dương", "Tím", "Xanh lá", "Đỏ", "Cam")
+
+    // Find selected index from persisted themeColor
+    val selectedThemeIndex = themeOptions.indexOfFirst { it.first == themeColorHex }.coerceAtLeast(0)
 
     Column(
         modifier = Modifier
@@ -138,13 +159,24 @@ fun ChatInfoScreen(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Text(
-                    displayName,
+                    displayNameWithNickname,
                     color = nc.textPrimary,
                     fontWeight = FontWeight.Bold,
                     fontSize = 22.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+
+                if (myNicknameForOther.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        displayName,
+                        color = nc.textTertiary,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(4.dp))
 
@@ -193,25 +225,25 @@ fun ChatInfoScreen(
                 ActionButton(
                     icon = Icons.Default.Chat,
                     label = "Nhắn tin",
-                    color = NexusPrimary,
+                    color = themeAccentColor,
                     onClick = { onNavigateToChat(chatId) }
                 )
                 ActionButton(
                     icon = Icons.Default.Call,
                     label = "Gọi",
-                    color = NexusPrimary,
+                    color = themeAccentColor,
                     onClick = {
                         val otherId = otherUser?.uid ?: ""
-                        if (otherId.isNotEmpty()) onStartCall(otherId, "voice", displayName)
+                        if (otherId.isNotEmpty()) onStartCall(otherId, "voice", displayNameWithNickname)
                     }
                 )
                 ActionButton(
                     icon = Icons.Default.Videocam,
                     label = "Video",
-                    color = NexusPrimary,
+                    color = themeAccentColor,
                     onClick = {
                         val otherId = otherUser?.uid ?: ""
-                        if (otherId.isNotEmpty()) onStartCall(otherId, "video", displayName)
+                        if (otherId.isNotEmpty()) onStartCall(otherId, "video", displayNameWithNickname)
                     }
                 )
             }
@@ -228,7 +260,7 @@ fun ChatInfoScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { notificationsEnabled = !notificationsEnabled }
+                        .clickable { viewModel?.setMuted(chatId, !mutedState) }
                         .padding(horizontal = 20.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -246,11 +278,11 @@ fun ChatInfoScreen(
                         modifier = Modifier.weight(1f)
                     )
                     Switch(
-                        checked = notificationsEnabled,
-                        onCheckedChange = { notificationsEnabled = it },
+                        checked = !mutedState,
+                        onCheckedChange = { enabled -> viewModel?.setMuted(chatId, !enabled) },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
-                            checkedTrackColor = NexusPrimary,
+                            checkedTrackColor = themeAccentColor,
                             uncheckedThumbColor = Color.White,
                             uncheckedTrackColor = nc.textTertiary
                         )
@@ -261,14 +293,14 @@ fun ChatInfoScreen(
             SettingsItem(
                 icon = Icons.Default.Palette,
                 title = "Đổi chủ đề",
-                subtitle = themeOptions[selectedTheme].first,
+                subtitle = themeNames.getOrNull(selectedThemeIndex) ?: "Mặc định",
                 onClick = { showThemeDialog = true }
             )
 
             SettingsItem(
                 icon = Icons.Default.Edit,
                 title = "Đổi biệt danh",
-                subtitle = nickname.ifEmpty { null },
+                subtitle = myNicknameForOther.ifEmpty { null },
                 onClick = { showNicknameDialog = true }
             )
 
@@ -362,14 +394,16 @@ fun ChatInfoScreen(
             },
             text = {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    themeOptions.forEachIndexed { index, (name, color) ->
+                    themeOptions.forEachIndexed { index, (hex, color) ->
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.clickable {
-                                selectedTheme = index
+                                viewModel?.updateChatTheme(chatId, hex)
                                 showThemeDialog = false
                             }
                         ) {
@@ -379,7 +413,7 @@ fun ChatInfoScreen(
                                     .clip(CircleShape)
                                     .background(color)
                                     .then(
-                                        if (selectedTheme == index) {
+                                        if (selectedThemeIndex == index) {
                                             Modifier.border(3.dp, nc.textPrimary, CircleShape)
                                         } else {
                                             Modifier
@@ -387,7 +421,7 @@ fun ChatInfoScreen(
                                     ),
                                 contentAlignment = Alignment.Center
                             ) {
-                                if (selectedTheme == index) {
+                                if (selectedThemeIndex == index) {
                                     Icon(
                                         Icons.Default.Check,
                                         contentDescription = null,
@@ -398,7 +432,7 @@ fun ChatInfoScreen(
                             }
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                name,
+                                themeNames[index],
                                 color = nc.textSecondary,
                                 fontSize = 11.sp,
                                 maxLines = 1
@@ -417,7 +451,7 @@ fun ChatInfoScreen(
 
     // ══════ NICKNAME DIALOG ══════
     if (showNicknameDialog) {
-        var nicknameInput by remember { mutableStateOf(nickname) }
+        var nicknameInput by remember { mutableStateOf(myNicknameForOther) }
         AlertDialog(
             onDismissRequest = { showNicknameDialog = false },
             containerColor = nc.surface,
@@ -452,7 +486,7 @@ fun ChatInfoScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    nickname = nicknameInput
+                    viewModel?.updateChatNickname(chatId, otherUserId, nicknameInput.trim())
                     showNicknameDialog = false
                 }) {
                     Text("Lưu", color = NexusPrimary)
@@ -468,7 +502,7 @@ fun ChatInfoScreen(
             containerColor = nc.surface,
             title = {
                 Text(
-                    "Chặn $displayName?",
+                    "Chặn $displayNameWithNickname?",
                     color = nc.textPrimary,
                     fontWeight = FontWeight.Bold
                 )
@@ -488,7 +522,7 @@ fun ChatInfoScreen(
             confirmButton = {
                 TextButton(onClick = {
                     showBlockUserDialog = false
-                    Toast.makeText(context, "Đã chặn $displayName", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Đã chặn $displayNameWithNickname", Toast.LENGTH_SHORT).show()
                 }) {
                     Text("Chặn", color = NexusError)
                 }

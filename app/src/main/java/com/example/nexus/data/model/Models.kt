@@ -43,6 +43,8 @@ data class Chat(
     val createdBy: String = "",
     val typingUsers: List<String> = emptyList(),
     val backgroundUrl: String = "",
+    val themeColor: String = "",
+    val nicknames: Map<String, String> = emptyMap(),
     @ServerTimestamp
     val createdAt: Timestamp? = null,
     @ServerTimestamp
@@ -84,6 +86,7 @@ data class Message(
     val reactions: Map<String, String> = emptyMap(), // userId -> emoji
     val replyTo: ReplyMessage? = null,
     val forwardedFrom: String? = null,
+    val hasLink: Boolean = false,
     @ServerTimestamp
     val timestamp: Timestamp? = null,
     @get:Exclude
