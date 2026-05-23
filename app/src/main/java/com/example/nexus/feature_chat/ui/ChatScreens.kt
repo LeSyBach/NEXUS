@@ -842,6 +842,29 @@ fun ConversationScreen(
         // Divider
         Box(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(nc.divider))
 
+        // ── Offline banner ──
+        val isOffline = viewModel?.isOffline?.collectAsState()?.value ?: false
+        AnimatedVisibility(
+            visible = isOffline,
+            enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut()
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFFD32F2F))
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Không có kết nối Internet",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+
         // ── Messages ──
         Box(
             modifier = Modifier
@@ -963,6 +986,7 @@ fun ConversationScreen(
                                         duration = msg.duration,
                                         message = msg,
                                         currentUserId = currentUserId,
+                                        isSending = msg.isSending,
                                         onLongClick = { showMessageMenu = Pair(chatId, msg) },
                                         onReply = {
                                             viewModel?.setReplyingMessage(msg)
@@ -1928,6 +1952,7 @@ fun MessageBubble(
     duration: Long = 0,
     message: Message? = null,
     currentUserId: String? = null,
+    isSending: Boolean = false,
     onLongClick: (() -> Unit)? = null,
     onReply: (() -> Unit)? = null,
     onReact: ((String) -> Unit)? = null,
@@ -2810,7 +2835,15 @@ fun MessageBubble(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(text = time, color = nc.textTertiary, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 4.dp))
-            if (isMe && status.isNotEmpty()) {
+            if (isMe && isSending) {
+                Text(
+                    text = "Đang gửi...",
+                    color = nc.textTertiary,
+                    fontSize = 10.sp,
+                    fontStyle = FontStyle.Italic,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+            } else if (isMe && status.isNotEmpty()) {
                 Text(
                     text = when(status) { "seen" -> "Đã xem"; "delivered" -> "Đã nhận"; "recalled" -> ""; else -> "Đã gửi" },
                     color = if (status == "seen") NexusPrimary else nc.textTertiary,

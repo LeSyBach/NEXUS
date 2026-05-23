@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.nexus.core.utils.Constants
+import com.example.nexus.core.utils.NetworkMonitor
 import com.example.nexus.core.utils.Resource
 import com.example.nexus.core.utils.getFileInfo
 import com.example.nexus.data.firebase.AiChatService
@@ -23,8 +24,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -58,7 +62,8 @@ class ChatViewModel @Inject constructor(
     private val mediaUploader: MediaUploader,
     private val voiceRecorderHelper: VoiceRecorderHelper,
     val audioPlayerHelper: AudioPlayerHelper,
-    private val aiChatService: AiChatService
+    private val aiChatService: AiChatService,
+    networkMonitor: NetworkMonitor
 ) : ViewModel() {
 
     private val _chatsState = MutableStateFlow<Resource<List<Chat>>>(Resource.Idle)
@@ -66,6 +71,10 @@ class ChatViewModel @Inject constructor(
 
     private val _messagesState = MutableStateFlow<Resource<List<Message>>>(Resource.Idle)
     val messagesState: StateFlow<Resource<List<Message>>> = _messagesState
+
+    val isOffline: StateFlow<Boolean> = networkMonitor.isConnected
+        .map { !it }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     private val _currentChat = MutableStateFlow<Chat?>(null)
     val currentChat: StateFlow<Chat?> = _currentChat

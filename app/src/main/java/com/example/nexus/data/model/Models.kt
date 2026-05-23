@@ -2,6 +2,7 @@ package com.example.nexus.data.model
 
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentId
+import com.google.firebase.firestore.Exclude
 import com.google.firebase.firestore.ServerTimestamp
 
 /**
@@ -85,6 +86,8 @@ data class Message(
     val forwardedFrom: String? = null,
     @ServerTimestamp
     val timestamp: Timestamp? = null,
+    @get:Exclude
+    val isSending: Boolean = false,
 )
 
 /**
