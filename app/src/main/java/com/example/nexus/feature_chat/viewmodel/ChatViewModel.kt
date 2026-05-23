@@ -14,6 +14,7 @@ import com.example.nexus.data.firebase.PlaybackState
 import com.example.nexus.data.firebase.VoiceRecorderHelper
 import com.example.nexus.data.model.Chat
 import com.example.nexus.data.model.Message
+import com.google.firebase.Timestamp
 import com.example.nexus.data.model.ReplyMessage
 import com.example.nexus.data.model.User
 import com.example.nexus.data.repository.ChatRepository
@@ -108,6 +109,12 @@ class ChatViewModel @Inject constructor(
     private val _smartReplies = MutableStateFlow<List<String>>(emptyList())
     val smartReplies: StateFlow<List<String>> = _smartReplies
 
+    private var _olderMessages = MutableStateFlow<List<Message>>(emptyList())
+    private var _isLoadingMoreMessages = MutableStateFlow(false)
+    val isLoadingMoreMessages: StateFlow<Boolean> = _isLoadingMoreMessages
+    private var _hasMoreMessages = MutableStateFlow(true)
+    val hasMoreMessages: StateFlow<Boolean> = _hasMoreMessages
+
     private var smartReplyJob: Job? = null
     private var lastProcessedMessageCount = 0
 
@@ -184,9 +191,17 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 chatRepository.observeMessages(chatId).collect { result ->
-                    _messagesState.value = result
                     if (result is Resource.Success) {
-                        val messages = result.data
+                        val older = _olderMessages.value
+                        if (older.isEmpty()) {
+                            _messagesState.value = result
+                        } else {
+                            val combined = (older + result.data)
+                                .distinctBy { it.id }
+                                .sortedByDescending { it.timestamp }
+                            _messagesState.value = Resource.Success(combined)
+                        }
+                        val messages = (_messagesState.value as? Resource.Success)?.data ?: emptyList()
                         if (messages.isNotEmpty() && messages.size > lastProcessedMessageCount) {
                             val latest = messages.first() // DESC order
                             if (latest.senderId != currentUserId && lastProcessedMessageCount > 0) {
@@ -194,6 +209,8 @@ class ChatViewModel @Inject constructor(
                             }
                         }
                         lastProcessedMessageCount = messages.size
+                    } else {
+                        _messagesState.value = result
                     }
                 }
             } catch (_: Exception) {
@@ -220,6 +237,51 @@ class ChatViewModel @Inject constructor(
                 val chat = chatRepository.getChatById(chatId)
                 if (chat != null) loadOtherUser(chat)
             } catch (_: Exception) {}
+        }
+    }
+
+    fun loadMoreMessages(chatId: String) {
+        val currentMessages = (_messagesState.value as? Resource.Success)?.data
+        if (currentMessages.isNullOrEmpty()) {
+            android.util.Log.d("PAGINATION_VM", "No current messages, skipping")
+            return
+        }
+        if (_isLoadingMoreMessages.value) {
+            android.util.Log.d("PAGINATION_VM", "Already loading, skipping")
+            return
+        }
+        if (!_hasMoreMessages.value) {
+            android.util.Log.d("PAGINATION_VM", "No more messages, skipping")
+            return
+        }
+
+        // Get the timestamp of the oldest message (last in DESC list)
+        val lastTimestamp = currentMessages.lastOrNull()?.timestamp ?: return
+        android.util.Log.d("PAGINATION_VM", "Loading more messages, currentCount=${currentMessages.size}, lastTimestamp=$lastTimestamp")
+
+        _isLoadingMoreMessages.value = true
+        viewModelScope.launch {
+            try {
+                val older = chatRepository.loadMoreMessages(chatId, lastTimestamp)
+                android.util.Log.d("PAGINATION_VM", "Loaded ${older.size} older messages")
+                if (older.size < Constants.MESSAGES_PAGE_SIZE) {
+                    _hasMoreMessages.value = false
+                }
+                if (older.isNotEmpty()) {
+                    _olderMessages.value = _olderMessages.value + older
+                    val listenerData = (_messagesState.value as? Resource.Success)?.data ?: emptyList()
+                    val combined = (_olderMessages.value + listenerData)
+                        .distinctBy { it.id }
+                        .sortedByDescending { it.timestamp }
+                    _messagesState.value = Resource.Success(combined)
+                } else {
+                    _hasMoreMessages.value = false
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("PAGINATION_VM", "Error loading more", e)
+            } finally {
+                _isLoadingMoreMessages.value = false
+            }
         }
     }
 
@@ -611,6 +673,9 @@ class ChatViewModel @Inject constructor(
         _smartReplies.value = emptyList()
         smartReplyJob?.cancel()
         lastProcessedMessageCount = 0
+        _olderMessages.value = emptyList()
+        _isLoadingMoreMessages.value = false
+        _hasMoreMessages.value = true
     }
 
     fun loadSharedContentCounts(chatId: String) {

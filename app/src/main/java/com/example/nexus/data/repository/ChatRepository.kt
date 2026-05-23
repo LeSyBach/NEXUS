@@ -8,6 +8,7 @@ import com.example.nexus.data.firebase.NotificationService
 import com.example.nexus.data.model.Chat
 import com.example.nexus.data.model.Message
 import com.example.nexus.data.model.ReplyMessage
+import com.google.firebase.Timestamp
 import com.example.nexus.data.model.User
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -53,6 +54,10 @@ class ChatRepository @Inject constructor(
         }
     }.catch { e ->
         emit(Resource.Error(e.message ?: "Unknown error"))
+    }
+
+    suspend fun loadMoreMessages(chatId: String, lastTimestamp: Timestamp): List<Message> {
+        return firestoreService.loadMoreMessages(chatId, lastTimestamp)
     }
 
     suspend fun sendMessage(chatId: String, text: String, replyTo: ReplyMessage? = null): Resource<Unit> {

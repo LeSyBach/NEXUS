@@ -242,6 +242,18 @@ class FirestoreService @Inject constructor(
         awaitClose { listener.remove() }
     }
 
+    suspend fun loadMoreMessages(chatId: String, lastTimestamp: Timestamp, limit: Long = 50): List<Message> {
+        return firestore.collection(Constants.COLLECTION_CHATS)
+            .document(chatId)
+            .collection(Constants.COLLECTION_MESSAGES)
+            .orderBy("timestamp", Query.Direction.DESCENDING)
+            .startAfter(lastTimestamp)
+            .limit(limit)
+            .get()
+            .await()
+            .toObjects(Message::class.java)
+    }
+
     suspend fun updateMessageStatus(chatId: String, messageId: String, status: String) {
         firestore.collection(Constants.COLLECTION_CHATS)
             .document(chatId)

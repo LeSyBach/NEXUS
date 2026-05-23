@@ -81,6 +81,7 @@ import androidx.compose.material.icons.outlined.LibraryAdd
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -680,6 +681,32 @@ fun ConversationScreen(
         }
     }
 
+    // Pagination state
+    val isLoadingMore = viewModel?.isLoadingMoreMessages?.collectAsState()?.value ?: false
+
+    // Load more when scrolling near the top of chat (oldest messages).
+    // With reverseLayout=true, the list is inverted:
+    //   - visual bottom = index 0 (newest)
+    //   - visual top = highest index (oldest)
+    // User scrolls UP → sees higher indices → triggers load more.
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            val layoutInfo = listState.layoutInfo
+            val total = layoutInfo.totalItemsCount
+            // lastVisibleItemIndex = item at the TOP of viewport (highest visible index)
+            val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val canScrollForward = listState.canScrollForward
+            Triple(total, lastVisible, canScrollForward)
+        }.collect { (total, lastVisible, canScrollForward) ->
+            android.util.Log.d("PAGINATION", "total=$total lastVisible=$lastVisible canScrollForward=$canScrollForward")
+            // Trigger when user can't scroll further toward older messages (top of chat)
+            if (total > 0 && !canScrollForward) {
+                android.util.Log.d("PAGINATION", "TRIGGERING loadMoreMessages!")
+                viewModel?.loadMoreMessages(chatId)
+            }
+        }
+    }
+
     val recordAudioPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted: Boolean ->
@@ -957,6 +984,24 @@ fun ConversationScreen(
                                             showFullScreenVideo = msg.text
                                         }
                                     )
+                                }
+                            }
+
+                            // Loading indicator for older messages (at bottom of reversed list = top of chat)
+                            if (isLoadingMore) {
+                                item {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        CircularProgressIndicator(
+                                            color = NexusPrimary,
+                                            strokeWidth = 2.dp,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
