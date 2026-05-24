@@ -3,10 +3,13 @@ package com.example.nexus.data.repository
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import com.example.nexus.core.utils.Constants
 import com.example.nexus.data.firebase.AuthService
 import com.example.nexus.data.firebase.FirestoreService
 import com.example.nexus.data.firebase.MediaUploader
 import com.example.nexus.data.model.User
+import com.google.firebase.Timestamp
+import com.google.firebase.firestore.FieldValue
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -16,7 +19,8 @@ class ProfileRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val firestoreService: FirestoreService,
     private val authService: AuthService,
-    private val mediaUploader: MediaUploader
+    private val mediaUploader: MediaUploader,
+    private val authRepository: AuthRepository
 ) {
     val currentUserId: String? get() = authService.currentUserId
 
@@ -48,7 +52,16 @@ class ProfileRepository @Inject constructor(
         firestoreService.updateUser(uid, updates)
     }
 
-    fun logout() {
-        authService.signOut()
+    suspend fun requestAccountDeletion() {
+        val uid = currentUserId ?: return
+        firestoreService.updateUser(uid, mapOf(
+            "status" to Constants.USER_STATUS_PENDING_DELETION,
+            "deletedAt" to Timestamp.now()
+        ))
+        authRepository.logout()
+    }
+
+    suspend fun logout() {
+        authRepository.logout()
     }
 }

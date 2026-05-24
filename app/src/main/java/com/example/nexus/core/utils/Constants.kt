@@ -55,6 +55,8 @@ object Constants {
     // User Status
     const val USER_STATUS_ONLINE = "online"
     const val USER_STATUS_OFFLINE = "offline"
+    const val USER_STATUS_ACTIVE = "active"
+    const val USER_STATUS_PENDING_DELETION = "pending_deletion"
 
     // Group Roles
     const val ROLE_ADMIN = "admin"

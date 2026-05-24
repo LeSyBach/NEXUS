@@ -3,6 +3,7 @@ package com.example.nexus.data.firebase
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.UserProfileChangeRequest
 import kotlinx.coroutines.channels.awaitClose
@@ -72,6 +73,15 @@ class AuthService @Inject constructor(
             .setDisplayName(name)
             .build()
         auth.currentUser?.updateProfile(profileUpdates)?.await()
+    }
+
+    /**
+     * Re-authenticate user with email and password.
+     * Required before sensitive operations like password change.
+     */
+    suspend fun reauthenticate(email: String, password: String) {
+        val credential = EmailAuthProvider.getCredential(email, password)
+        auth.currentUser?.reauthenticate(credential)?.await()
     }
 
     /**

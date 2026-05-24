@@ -138,6 +138,12 @@ dependencies {
     // DataStore
     implementation(libs.datastore.preferences)
 
+    // Biometric
+    implementation(libs.androidx.biometric)
+
+    // Security Crypto (EncryptedSharedPreferences)
+    implementation(libs.androidx.security.crypto)
+
     // Coroutines Tasks
     implementation(libs.kotlinx.coroutines.play.services)
 

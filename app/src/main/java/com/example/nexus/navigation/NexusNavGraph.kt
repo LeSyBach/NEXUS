@@ -401,6 +401,24 @@ fun NexusNavGraph(
             val settingsViewModel: com.example.nexus.feature_profile.viewmodel.SettingsViewModel = hiltViewModel()
             com.example.nexus.feature_profile.ui.SettingsScreen(
                 viewModel = settingsViewModel,
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToChangePassword = {
+                    navController.navigate(Screen.ChangePassword.route)
+                },
+                onLogout = {
+                    navController.navigate(Screen.Login.route) {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            inclusive = true
+                        }
+                    }
+                }
+            )
+        }
+
+        composable(Screen.ChangePassword.route) {
+            val securityViewModel: com.example.nexus.feature_profile.viewmodel.SecurityViewModel = hiltViewModel()
+            com.example.nexus.feature_profile.ui.ChangePasswordScreen(
+                viewModel = securityViewModel,
                 onNavigateBack = { navController.popBackStack() }
             )
         }

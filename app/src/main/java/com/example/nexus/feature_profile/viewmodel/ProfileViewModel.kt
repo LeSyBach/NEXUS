@@ -85,6 +85,8 @@ class ProfileViewModel @Inject constructor(
     }
 
     fun logout() {
-        profileRepository.logout()
+        viewModelScope.launch {
+            profileRepository.logout()
+        }
     }
 }

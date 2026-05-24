@@ -1,10 +1,15 @@
 package com.example.nexus.data.repository
 
+import com.example.nexus.core.utils.AccountManager
+import com.example.nexus.core.utils.Constants
+import com.example.nexus.core.utils.SavedAccount
 import com.example.nexus.data.firebase.AuthService
 import com.example.nexus.data.firebase.FirestoreService
 import com.example.nexus.data.model.User
 import android.util.Log
+import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.tasks.await
@@ -18,7 +23,8 @@ import javax.inject.Singleton
 @Singleton
 class AuthRepository @Inject constructor(
     private val authService: AuthService,
-    private val firestoreService: FirestoreService
+    private val firestoreService: FirestoreService,
+    private val accountManager: AccountManager
 ) {
     val currentUser: FirebaseUser?
         get() = authService.currentUser
@@ -30,37 +36,85 @@ class AuthRepository @Inject constructor(
 
     suspend fun login(email: String, password: String) {
         authService.signInWithEmail(email, password)
+
+        val userId = authService.currentUserId
+        if (userId != null) {
+            // Check if account is pending deletion → auto reactivate
+            val user = firestoreService.getUser(userId)
+            if (user?.status == Constants.USER_STATUS_PENDING_DELETION) {
+                firestoreService.updateUser(userId, mapOf(
+                    "status" to Constants.USER_STATUS_ACTIVE,
+                    "deletedAt" to FieldValue.delete()
+                ))
+                Log.d("AuthRepository", "Account reactivated for user $userId")
+            }
+
+            // Save credential for account switching
+            accountManager.addAccount(
+                SavedAccount(
+                    email = email,
+                    encryptedPassword = password,
+                    displayName = user?.displayName ?: "",
+                    avatarUrl = user?.avatarUrl ?: ""
+                )
+            )
+        }
+
         saveFcmToken()
     }
 
     suspend fun register(email: String, password: String, username: String) {
-        // 1. Create user in Firebase Auth
         val firebaseUser = authService.registerWithEmail(email, password)
-
-        // 2. Update display name in Firebase Auth Profile
         authService.updateDisplayName(username)
-
-        // 3. Save user data to Firestore Database
         val user = User(
             uid = firebaseUser.uid,
             email = email,
-            username = username.lowercase().replace(" ", "_"), // Simple username generation
+            username = username.lowercase().replace(" ", "_"),
             displayName = username,
-            status = "online",
-            avatarUrl = "" // Empty avatar for now
+            status = Constants.USER_STATUS_ACTIVE,
+            avatarUrl = ""
         )
         firestoreService.createUser(user)
+
+        accountManager.addAccount(
+            SavedAccount(
+                email = email,
+                encryptedPassword = password,
+                displayName = username,
+                avatarUrl = ""
+            )
+        )
+
         saveFcmToken()
     }
 
-    fun logout() {
+    suspend fun logout() {
+        try {
+            val userId = authService.currentUserId
+            if (userId != null) {
+                firestoreService.updateUser(userId, mapOf(
+                    "fcmToken" to "",
+                    "status" to Constants.USER_STATUS_OFFLINE,
+                    "lastSeen" to Timestamp.now()
+                ))
+            }
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Error clearing FCM token on logout", e)
+        }
+        accountManager.setCurrentAccountEmail(null)
         authService.signOut()
     }
 
-    /**
-     * Lấy FCM token hiện tại và lưu vào Firestore cho user đang đăng nhập.
-     * Gọi sau mỗi lần đăng nhập để đảm bảo token luôn mới nhất.
-     */
+    suspend fun changePassword(oldPassword: String, newPassword: String) {
+        val email = authService.currentUser?.email ?: throw Exception("Không tìm thấy email")
+        authService.reauthenticate(email, oldPassword)
+        authService.updatePassword(newPassword)
+    }
+
+    suspend fun forgotPassword(email: String) {
+        authService.sendPasswordResetEmail(email)
+    }
+
     suspend fun saveFcmToken() {
         try {
             val userId = authService.currentUserId ?: return

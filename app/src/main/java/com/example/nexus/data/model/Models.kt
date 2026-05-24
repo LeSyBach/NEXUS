@@ -26,6 +26,7 @@ data class User(
     val createdAt: Timestamp? = null,
     @ServerTimestamp
     val updatedAt: Timestamp? = null,
+    val deletedAt: Timestamp? = null,
 )
 
 /**
