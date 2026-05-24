@@ -1,5 +1,9 @@
 package com.example.nexus.feature_profile.ui
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,10 +23,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.nexus.feature_profile.viewmodel.ProfileViewModel
 import com.example.nexus.navigation.Screen
 import com.example.nexus.ui.components.NexusBottomBar
@@ -50,13 +55,14 @@ fun ProfileScreen(
                 onNavigate = onNavigateToTab
             )
         },
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = nc.background
     ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // ── Header gradient banner ──
             Box(
@@ -65,7 +71,7 @@ fun ProfileScreen(
                     .height(180.dp)
                     .background(
                         Brush.verticalGradient(
-                            listOf(NexusPrimary.copy(alpha = 0.6f), MaterialTheme.colorScheme.background)
+                            listOf(NexusPrimary.copy(alpha = 0.6f), nc.background)
                         )
                     ),
                 contentAlignment = Alignment.BottomStart
@@ -80,28 +86,31 @@ fun ProfileScreen(
                 )
             }
 
-            // ── Avatar + Info Card ──
+            // ── Avatar (centered, large) ──
             Box(
                 modifier = Modifier
-                    .padding(horizontal = 20.dp)
-                    .offset(y = (-24).dp)
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(MaterialTheme.colorScheme.surface)
-                    .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(24.dp))
-                    .padding(20.dp)
+                    .offset(y = (-48).dp)
+                    .size(120.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Avatar circle
+                val avatarUrl = user?.avatarUrl
+                if (!avatarUrl.isNullOrEmpty()) {
+                    AsyncImage(
+                        model = avatarUrl,
+                        contentDescription = "Avatar",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(CircleShape)
+                            .border(3.dp, nc.background, CircleShape)
+                    )
+                } else {
                     Box(
                         modifier = Modifier
-                            .size(72.dp)
+                            .fillMaxSize()
                             .clip(CircleShape)
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(NexusPrimary, NexusSecondary)
-                                )
-                            ),
+                            .background(Brush.linearGradient(listOf(NexusPrimary, NexusSecondary)))
+                            .border(3.dp, nc.background, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         val initial = user?.displayName?.firstOrNull()
@@ -109,43 +118,65 @@ fun ProfileScreen(
                             ?: 'U'
                         Text(
                             initial.uppercaseChar().toString(),
-                            color = nc.textPrimary,
-                            fontSize = 28.sp,
+                            color = Color.White,
+                            fontSize = 44.sp,
                             fontWeight = FontWeight.Bold
                         )
-                    }
-
-                    Spacer(modifier = Modifier.width(16.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            user?.displayName?.ifEmpty { user?.username ?: "" } ?: "...",
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            user?.phone?.ifEmpty { "Chưa cập nhật SĐT" } ?: "...",
-                            color = nc.textSecondary,
-                            fontSize = 13.sp
-                        )
-                        if (!user?.bio.isNullOrEmpty()) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(user?.bio ?: "", color = NexusPrimary, fontSize = 13.sp)
-                        }
-                    }
-
-                    IconButton(
-                        onClick = onNavigateToEdit,
-                        modifier = Modifier.background(MaterialTheme.colorScheme.background, CircleShape)
-                    ) {
-                        Icon(Icons.Default.Edit, contentDescription = "Sửa hồ sơ", tint = NexusPrimary)
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
+            // ── User Info ──
+            Column(
+                modifier = Modifier
+                    .offset(y = (-24).dp)
+                    .padding(horizontal = 20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    user?.displayName?.ifEmpty { user?.username ?: "" } ?: "...",
+                    color = nc.textPrimary,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    user?.email?.ifEmpty { "" } ?: "",
+                    color = nc.textSecondary,
+                    fontSize = 14.sp
+                )
+
+                if (!user?.bio.isNullOrEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        user?.bio ?: "",
+                        color = NexusPrimary,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Edit Profile button
+                Button(
+                    onClick = onNavigateToEdit,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = NexusPrimary,
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(24.dp),
+                    modifier = Modifier.height(40.dp)
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Chỉnh sửa hồ sơ", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             // ── Menu section ──
             Text(
@@ -154,7 +185,9 @@ fun ProfileScreen(
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.sp,
-                modifier = Modifier.padding(start = 24.dp, top = 8.dp, bottom = 8.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 24.dp, top = 8.dp, bottom = 8.dp)
             )
 
             ProfileMenuItem(Icons.Outlined.Settings, "Cài đặt & Quyền riêng tư") { onNavigateToSettings() }
@@ -224,11 +257,23 @@ fun EditProfileScreen(
     val user by (viewModel?.user?.collectAsState() ?: remember { mutableStateOf(null) })
     val isLoading by (viewModel?.isLoading?.collectAsState() ?: remember { mutableStateOf(false) })
     val updateSuccess by (viewModel?.updateSuccess?.collectAsState() ?: remember { mutableStateOf(false) })
+    val avatarError by (viewModel?.avatarUploadError?.collectAsState() ?: remember { mutableStateOf(null) })
     val nc = MaterialTheme.nexusColors
 
     var displayName by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var bio by remember { mutableStateOf("") }
+    var selectedAvatarUri by remember { mutableStateOf<Uri?>(null) }
+
+    // Photo picker launcher
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        uri?.let {
+            selectedAvatarUri = it
+            viewModel?.setPendingAvatar(it)
+        }
+    }
 
     // Pre-fill when user data arrives
     LaunchedEffect(user) {
@@ -241,7 +286,10 @@ fun EditProfileScreen(
 
     // Navigate back after successful update
     LaunchedEffect(updateSuccess) {
-        if (updateSuccess) onNavigateBack()
+        if (updateSuccess) {
+            viewModel?.resetUpdateSuccess()
+            onNavigateBack()
+        }
     }
 
     Scaffold(
@@ -274,23 +322,84 @@ fun EditProfileScreen(
             ) {
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Avatar preview
+                // ── Avatar with camera overlay ──
                 Box(
-                    modifier = Modifier
-                        .size(96.dp)
-                        .clip(CircleShape)
-                        .background(
-                            Brush.linearGradient(
-                                listOf(NexusPrimary, NexusSecondary)
-                            )
-                        ),
+                    modifier = Modifier.size(110.dp),
                     contentAlignment = Alignment.Center
                 ) {
+                    // Avatar image
+                    when {
+                        selectedAvatarUri != null -> {
+                            AsyncImage(
+                                model = selectedAvatarUri,
+                                contentDescription = "Avatar đã chọn",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(CircleShape)
+                                    .border(3.dp, NexusPrimary.copy(alpha = 0.3f), CircleShape)
+                            )
+                        }
+                        !user?.avatarUrl.isNullOrEmpty() -> {
+                            AsyncImage(
+                                model = user?.avatarUrl,
+                                contentDescription = "Avatar",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(CircleShape)
+                                    .border(3.dp, nc.surface, CircleShape)
+                            )
+                        }
+                        else -> {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(CircleShape)
+                                    .background(Brush.linearGradient(listOf(NexusPrimary, NexusSecondary))),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "U",
+                                    color = Color.White,
+                                    fontSize = 40.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    // Camera icon overlay
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(NexusPrimary)
+                            .border(2.dp, nc.background, CircleShape)
+                            .clickable {
+                                photoPickerLauncher.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.CameraAlt,
+                            contentDescription = "Đổi ảnh đại diện",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                // Avatar error message
+                if (avatarError != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "U",
-                        color = nc.textPrimary,
-                        fontSize = 36.sp,
-                        fontWeight = FontWeight.Bold
+                        avatarError ?: "",
+                        color = nc.errorText,
+                        fontSize = 13.sp
                     )
                 }
 
@@ -383,7 +492,7 @@ fun EditProfileScreen(
                         .height(56.dp)
                 ) {
                     if (isLoading) {
-                        CircularProgressIndicator(color = nc.textPrimary, modifier = Modifier.size(24.dp))
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
                     } else {
                         Text(
                             "LƯU THAY ĐỔI",

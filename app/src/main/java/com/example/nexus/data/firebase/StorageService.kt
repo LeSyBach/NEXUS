@@ -1,6 +1,7 @@
 package com.example.nexus.data.firebase
 
 import android.net.Uri
+import android.util.Log
 import com.example.nexus.core.utils.Constants
 import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.tasks.await
@@ -15,13 +16,25 @@ class StorageService @Inject constructor(
     private val storage: FirebaseStorage
 ) {
     /**
-     * Upload user avatar and return download URL.
+     * Upload user avatar from ByteArray and return download URL.
+     * Uses putBytes() — most reliable across all devices.
+     * Gets download URL from UploadTask metadata to avoid "Object does not exist" race condition.
      */
-    suspend fun uploadAvatar(userId: String, imageUri: Uri): String {
-        val ref = storage.reference
-            .child("${Constants.STORAGE_AVATARS}/$userId.jpg")
-        ref.putFile(imageUri).await()
-        return ref.downloadUrl.await().toString()
+    suspend fun uploadAvatar(userId: String, imageBytes: ByteArray): String {
+        val path = "${Constants.STORAGE_AVATARS}/$userId.jpg"
+        val ref = storage.reference.child(path)
+        Log.d("AvatarUpload", "Storage path: $path, bytes: ${imageBytes.size}")
+
+        val taskSnapshot = ref.putBytes(imageBytes).await()
+        Log.d("AvatarUpload", "putBytes done, transferred: ${taskSnapshot.bytesTransferred}")
+
+        // Verify file exists by reading metadata before fetching URL
+        val metadata = ref.metadata.await()
+        Log.d("AvatarUpload", "Metadata size: ${metadata.sizeBytes}")
+
+        val url = ref.downloadUrl.await().toString()
+        Log.d("AvatarUpload", "Download URL: $url")
+        return url
     }
 
     /**
