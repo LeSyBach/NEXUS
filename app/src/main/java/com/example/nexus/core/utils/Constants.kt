@@ -58,6 +58,13 @@ object Constants {
     const val USER_STATUS_ACTIVE = "active"
     const val USER_STATUS_PENDING_DELETION = "pending_deletion"
 
+    // Relationship Status
+    const val RELATION_NONE = "none"
+    const val RELATION_FRIENDS = "friends"
+    const val RELATION_PENDING_SENT = "pending_sent"
+    const val RELATION_PENDING_RECEIVED = "pending_received"
+    const val RELATION_BLOCKED = "blocked"
+
     // Group Roles
     const val ROLE_ADMIN = "admin"
     const val ROLE_MEMBER = "member"

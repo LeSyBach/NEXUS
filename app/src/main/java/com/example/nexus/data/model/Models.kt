@@ -22,6 +22,7 @@ data class User(
     val fcmToken: String = "",
     val bio: String = "",
     val friends: List<String> = emptyList(),
+    val blockedUsers: List<String> = emptyList(),
     @ServerTimestamp
     val createdAt: Timestamp? = null,
     @ServerTimestamp

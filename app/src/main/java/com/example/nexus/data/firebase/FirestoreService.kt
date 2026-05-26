@@ -659,6 +659,39 @@ class FirestoreService @Inject constructor(
         return requests.firstOrNull()
     }
 
+    suspend fun cancelFriendRequest(fromUserId: String, toUserId: String) {
+        val request = checkExistingFriendRequest(fromUserId, toUserId) ?: return
+        firestore.collection(Constants.COLLECTION_FRIEND_REQUESTS)
+            .document(request.id)
+            .delete()
+            .await()
+    }
+
+    suspend fun removeFriend(currentUserId: String, targetUserId: String) {
+        firestore.collection(Constants.COLLECTION_USERS)
+            .document(currentUserId)
+            .update("friends", FieldValue.arrayRemove(targetUserId))
+            .await()
+        firestore.collection(Constants.COLLECTION_USERS)
+            .document(targetUserId)
+            .update("friends", FieldValue.arrayRemove(currentUserId))
+            .await()
+    }
+
+    suspend fun blockUser(currentUserId: String, targetUserId: String) {
+        firestore.collection(Constants.COLLECTION_USERS)
+            .document(currentUserId)
+            .update("blockedUsers", FieldValue.arrayUnion(targetUserId))
+            .await()
+    }
+
+    suspend fun unblockUser(currentUserId: String, targetUserId: String) {
+        firestore.collection(Constants.COLLECTION_USERS)
+            .document(currentUserId)
+            .update("blockedUsers", FieldValue.arrayRemove(targetUserId))
+            .await()
+    }
+
     // ══════════════════════════════════════════════════════════════
     // GROUP OPERATIONS
     // ══════════════════════════════════════════════════════════════

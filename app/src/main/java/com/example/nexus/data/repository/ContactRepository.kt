@@ -12,6 +12,7 @@ import com.google.firebase.Timestamp
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -178,6 +179,98 @@ class ContactRepository @Inject constructor(
             firestoreService.getSentRequestTargetIds(userId)
         } catch (e: Exception) {
             emptySet()
+        }
+    }
+
+    // ── Observe relationship with another user ─────────────────────
+    fun observeRelationship(targetUserId: String): Flow<String> = flow {
+        val userId = getCurrentUserId() ?: run {
+            emit(Constants.RELATION_NONE)
+            return@flow
+        }
+
+        // Observe current user's document for real-time relationship changes
+        firestoreService.observeUser(userId).collect { currentUser ->
+            if (currentUser == null) {
+                emit(Constants.RELATION_NONE)
+                return@collect
+            }
+
+            // Check blocked first
+            if (targetUserId in currentUser.blockedUsers) {
+                emit(Constants.RELATION_BLOCKED)
+                return@collect
+            }
+
+            // Check friends
+            if (targetUserId in currentUser.friends) {
+                emit(Constants.RELATION_FRIENDS)
+                return@collect
+            }
+
+            // Check friend requests in both directions
+            val sentRequest = firestoreService.checkExistingFriendRequest(userId, targetUserId)
+            if (sentRequest != null) {
+                emit(Constants.RELATION_PENDING_SENT)
+                return@collect
+            }
+
+            val receivedRequest = firestoreService.checkExistingFriendRequest(targetUserId, userId)
+            if (receivedRequest != null) {
+                emit(Constants.RELATION_PENDING_RECEIVED)
+                return@collect
+            }
+
+            emit(Constants.RELATION_NONE)
+        }
+    }.catch { emit(Constants.RELATION_NONE) }
+
+    // ── Block user ─────────────────────────────────────────────────
+    suspend fun blockUser(targetUserId: String): Resource<Unit> {
+        return try {
+            val userId = getCurrentUserId() ?: return Resource.Error("Not logged in")
+            // Remove from friends first if applicable
+            val currentUser = firestoreService.getUser(userId)
+            if (currentUser != null && targetUserId in currentUser.friends) {
+                firestoreService.removeFriend(userId, targetUserId)
+            }
+            firestoreService.blockUser(userId, targetUserId)
+            Resource.Success(Unit)
+        } catch (e: Exception) {
+            Resource.Error(e.message ?: "Lỗi khi chặn người dùng")
+        }
+    }
+
+    // ── Unblock user ───────────────────────────────────────────────
+    suspend fun unblockUser(targetUserId: String): Resource<Unit> {
+        return try {
+            val userId = getCurrentUserId() ?: return Resource.Error("Not logged in")
+            firestoreService.unblockUser(userId, targetUserId)
+            Resource.Success(Unit)
+        } catch (e: Exception) {
+            Resource.Error(e.message ?: "Lỗi khi bỏ chặn")
+        }
+    }
+
+    // ── Unfriend ───────────────────────────────────────────────────
+    suspend fun unfriend(targetUserId: String): Resource<Unit> {
+        return try {
+            val userId = getCurrentUserId() ?: return Resource.Error("Not logged in")
+            firestoreService.removeFriend(userId, targetUserId)
+            Resource.Success(Unit)
+        } catch (e: Exception) {
+            Resource.Error(e.message ?: "Lỗi khi hủy kết bạn")
+        }
+    }
+
+    // ── Cancel sent friend request ─────────────────────────────────
+    suspend fun cancelFriendRequest(targetUserId: String): Resource<Unit> {
+        return try {
+            val userId = getCurrentUserId() ?: return Resource.Error("Not logged in")
+            firestoreService.cancelFriendRequest(userId, targetUserId)
+            Resource.Success(Unit)
+        } catch (e: Exception) {
+            Resource.Error(e.message ?: "Lỗi khi thu hồi lời mời")
         }
     }
 }

@@ -31,6 +31,7 @@ import com.example.nexus.feature_chat.ui.ChatInfoScreen
 import com.example.nexus.feature_chat.ui.CreateGroupScreen
 import com.example.nexus.feature_contact.ui.ContactListScreen
 import com.example.nexus.feature_contact.ui.FriendRequestsScreen
+import com.example.nexus.feature_contact.ui.OtherUserProfileScreen
 import com.example.nexus.feature_contact.ui.SearchUserScreen
 import com.example.nexus.feature_call.ui.OngoingCallScreen
 import com.example.nexus.feature_call.ui.IncomingCallScreen
@@ -154,6 +155,9 @@ fun NexusNavGraph(
                 },
                 onNavigateToFriendRequests = {
                     navController.navigate(Screen.FriendRequests.route)
+                },
+                onNavigateToProfile = { userId ->
+                    navController.navigate(Screen.OtherUserProfile.createRoute(userId))
                 },
                 onNavigateToTab = onNavigateToTab
             )
@@ -290,6 +294,9 @@ fun NexusNavGraph(
                     navController.navigate(Screen.Conversation.createRoute(chatId)) {
                         popUpTo(Screen.Contacts.route)
                     }
+                },
+                onNavigateToProfile = { userId ->
+                    navController.navigate(Screen.OtherUserProfile.createRoute(userId))
                 }
             )
         }
@@ -299,6 +306,21 @@ fun NexusNavGraph(
             FriendRequestsScreen(
                 viewModel = contactViewModel,
                 onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = Screen.OtherUserProfile.route,
+            arguments = listOf(navArgument("targetUserId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val targetUserId = backStackEntry.arguments?.getString("targetUserId") ?: return@composable
+            val otherUserViewModel: com.example.nexus.feature_contact.viewmodel.OtherUserProfileViewModel = hiltViewModel()
+            OtherUserProfileScreen(
+                viewModel = otherUserViewModel,
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToChat = { chatId ->
+                    navController.navigate(Screen.Conversation.createRoute(chatId))
+                }
             )
         }
 

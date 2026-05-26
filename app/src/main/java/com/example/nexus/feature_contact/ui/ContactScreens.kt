@@ -52,6 +52,7 @@ fun ContactListScreen(
     onNavigateToChat: (String) -> Unit,
     onNavigateToSearch: () -> Unit,
     onNavigateToFriendRequests: () -> Unit,
+    onNavigateToProfile: (String) -> Unit = {},
     onNavigateToTab: (String) -> Unit
 ) {
     val nc = MaterialTheme.nexusColors
@@ -234,7 +235,7 @@ fun ContactListScreen(
                                     name = friend.displayName.ifEmpty { friend.username },
                                     status = if (friend.status == Constants.USER_STATUS_ONLINE) "Đang hoạt động" else "",
                                     isOnline = friend.status == Constants.USER_STATUS_ONLINE,
-                                    onClick = { viewModel?.startChatWithFriend(friend.uid) }
+                                    onClick = { onNavigateToProfile(friend.uid) }
                                 )
                             }
                         }
@@ -310,7 +311,8 @@ fun ContactItem(name: String, status: String, isOnline: Boolean, onClick: () -> 
 fun SearchUserScreen(
     viewModel: ContactViewModel? = null,
     onNavigateBack: () -> Unit,
-    onNavigateToChat: (String) -> Unit = {}
+    onNavigateToChat: (String) -> Unit = {},
+    onNavigateToProfile: (String) -> Unit = {}
 ) {
     val nc = MaterialTheme.nexusColors
     var searchQuery by remember { mutableStateOf("") }
@@ -402,9 +404,7 @@ fun SearchUserScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable {
-                                        if (isFriend) viewModel?.startChatWithFriend(user.uid)
-                                    }
+                                    .clickable { onNavigateToProfile(user.uid) }
                                     .padding(horizontal = 20.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {

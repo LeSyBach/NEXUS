@@ -50,6 +50,9 @@ sealed class Screen(
     // ── Contacts ──
     data object SearchUser : Screen("search_user", "Tìm kiếm")
     data object FriendRequests : Screen("friend_requests", "Lời mời kết bạn")
+    data object OtherUserProfile : Screen("other_user_profile/{targetUserId}", "Hồ sơ") {
+        fun createRoute(targetUserId: String) = "other_user_profile/$targetUserId"
+    }
 
     // ── Profile ──
     data object EditProfile : Screen("edit_profile", "Chỉnh sửa")
