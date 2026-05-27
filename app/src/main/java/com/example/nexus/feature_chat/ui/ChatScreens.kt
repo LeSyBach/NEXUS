@@ -100,6 +100,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -3806,46 +3807,37 @@ fun SystemMessageBubble(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         if (showDateSeparator && dateSeparatorText.isNotEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = dateSeparatorText,
-                    color = nc.textTertiary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier
-                        .background(nc.divider, RoundedCornerShape(12.dp))
-                        .padding(horizontal = 14.dp, vertical = 5.dp)
-                )
-            }
-        }
-
-        Box(
-            modifier = Modifier
-                .background(nc.divider.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                .padding(horizontal = 14.dp, vertical = 6.dp),
-            contentAlignment = Alignment.Center
-        ) {
             Text(
-                text = text,
+                text = dateSeparatorText,
                 color = nc.textTertiary,
                 fontSize = 12.sp,
-                fontWeight = FontWeight.Normal
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(vertical = 12.dp)
             )
         }
+
+        Text(
+            text = text,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Normal,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp)
+        )
 
         Spacer(modifier = Modifier.height(2.dp))
 
         Text(
             text = time,
-            color = nc.textTertiary.copy(alpha = 0.6f),
-            fontSize = 10.sp
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            fontSize = 10.sp,
+            textAlign = TextAlign.Center
         )
     }
 }
