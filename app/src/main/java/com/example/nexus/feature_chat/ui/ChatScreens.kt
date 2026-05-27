@@ -1855,12 +1855,22 @@ fun ConversationScreen(
                                     .background(nc.avatarBg),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = userName.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
-                                    color = nc.textPrimary,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp
-                                )
+                                val userAvatarUrl = user?.avatarUrl?.ifEmpty { null }
+                                if (userAvatarUrl != null) {
+                                    AsyncImage(
+                                        model = userAvatarUrl,
+                                        contentDescription = null,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                } else {
+                                    Text(
+                                        text = userName.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
+                                        color = nc.textPrimary,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp
+                                    )
+                                }
                             }
                             Spacer(modifier = Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
@@ -3552,13 +3562,23 @@ fun ForwardMessageBottomSheet(
                                         .background(nc.avatarBg),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    val initial = displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
-                                    Text(
-                                        text = initial,
-                                        color = nc.textPrimary,
-                                        fontSize = 18.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                                    val avatarUrl = viewModel?.resolveAvatarUrl(chat)
+                                    if (!avatarUrl.isNullOrEmpty()) {
+                                        AsyncImage(
+                                            model = avatarUrl,
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    } else {
+                                        val initial = displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
+                                        Text(
+                                            text = initial,
+                                            color = nc.textPrimary,
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
                                 }
                                 Spacer(modifier = Modifier.width(12.dp))
                                 // Name

@@ -32,8 +32,10 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.nexus.core.utils.Constants
 import com.example.nexus.core.utils.Resource
 import com.example.nexus.data.model.FriendRequest
@@ -235,6 +237,7 @@ fun ContactListScreen(
                                     name = friend.displayName.ifEmpty { friend.username },
                                     status = if (friend.status == Constants.USER_STATUS_ONLINE) "Đang hoạt động" else "",
                                     isOnline = friend.status == Constants.USER_STATUS_ONLINE,
+                                    avatarUrl = friend.avatarUrl.ifEmpty { null },
                                     onClick = { onNavigateToProfile(friend.uid) }
                                 )
                             }
@@ -252,7 +255,7 @@ fun ContactListScreen(
 }
 
 @Composable
-fun ContactItem(name: String, status: String, isOnline: Boolean, onClick: () -> Unit) {
+fun ContactItem(name: String, status: String, isOnline: Boolean, avatarUrl: String? = null, onClick: () -> Unit) {
     val nc = MaterialTheme.nexusColors
     Row(
         modifier = Modifier
@@ -269,12 +272,21 @@ fun ContactItem(name: String, status: String, isOnline: Boolean, onClick: () -> 
                     .background(Brush.linearGradient(listOf(NexusPrimary.copy(alpha = 0.4f), nc.cardBg))),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    name.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
-                    color = nc.textPrimary,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp
-                )
+                if (!avatarUrl.isNullOrEmpty()) {
+                    AsyncImage(
+                        model = avatarUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Text(
+                        name.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
+                        color = nc.textPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+                }
             }
             if (isOnline) {
                 Box(
@@ -415,12 +427,21 @@ fun SearchUserScreen(
                                         .background(Brush.linearGradient(listOf(NexusPrimary.copy(alpha = 0.4f), nc.cardBg))),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Text(
-                                        user.username.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
-                                        color = nc.textPrimary,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 18.sp
-                                    )
+                                    if (user.avatarUrl.isNotEmpty()) {
+                                        AsyncImage(
+                                            model = user.avatarUrl,
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    } else {
+                                        Text(
+                                            user.username.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
+                                            color = nc.textPrimary,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 18.sp
+                                        )
+                                    }
                                 }
                                 Spacer(modifier = Modifier.width(14.dp))
                                 Column(modifier = Modifier.weight(1f)) {
@@ -726,12 +747,21 @@ private fun ReceivedRequestItem(
                 .background(Brush.linearGradient(listOf(NexusPrimary.copy(alpha = 0.4f), nc.cardBg))),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                request.fromUsername.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
-                color = nc.textPrimary,
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp
-            )
+            if (request.fromAvatarUrl.isNotEmpty()) {
+                AsyncImage(
+                    model = request.fromAvatarUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Text(
+                    request.fromUsername.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
+                    color = nc.textPrimary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+            }
         }
         Spacer(modifier = Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {

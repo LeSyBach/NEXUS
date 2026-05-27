@@ -52,8 +52,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import coil.compose.AsyncImage
 import com.example.nexus.feature_call.viewmodel.CallState
 import com.example.nexus.feature_call.viewmodel.CallViewModel
 import com.example.nexus.ui.theme.nexusColors
@@ -676,7 +678,7 @@ fun CallRouter(
 }
 
 @Composable
-private fun AvatarCircle(initial: String, size: Int) {
+private fun AvatarCircle(initial: String, size: Int, avatarUrl: String? = null) {
     val nc = MaterialTheme.nexusColors
     Box(
         modifier = Modifier
@@ -685,12 +687,21 @@ private fun AvatarCircle(initial: String, size: Int) {
             .background(nc.avatarBg),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = initial,
-            color = nc.textPrimary,
-            fontSize = (size / 3).sp,
-            fontWeight = FontWeight.Bold
-        )
+        if (!avatarUrl.isNullOrEmpty()) {
+            AsyncImage(
+                model = avatarUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Text(
+                text = initial,
+                color = nc.textPrimary,
+                fontSize = (size / 3).sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
     }
 }
 
