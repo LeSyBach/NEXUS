@@ -43,6 +43,7 @@ data class Chat(
     val groupName: String = "",
     val groupAvatarUrl: String = "",
     val createdBy: String = "",
+    val adminIds: List<String> = emptyList(),
     val typingUsers: List<String> = emptyList(),
     val backgroundUrl: String = "",
     val themeColor: String = "",
@@ -146,6 +147,7 @@ data class Group(
 data class GroupMember(
     val userId: String = "",
     val username: String = "",
+    val displayName: String = "",
     val avatarUrl: String = "",
     val role: String = "member", // admin, member
     val joinedAt: Timestamp? = null,

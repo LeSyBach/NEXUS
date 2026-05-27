@@ -232,7 +232,9 @@ fun NexusNavGraph(
         }
 
         composable(Screen.CreateGroup.route) {
+            val groupViewModel: com.example.nexus.feature_chat.viewmodel.GroupViewModel = hiltViewModel()
             CreateGroupScreen(
+                viewModel = groupViewModel,
                 onNavigateBack = { navController.popBackStack() },
                 onGroupCreated = { chatId ->
                     navController.navigate(Screen.Conversation.createRoute(chatId)) {
@@ -249,9 +251,11 @@ fun NexusNavGraph(
         ) { backStackEntry ->
             val chatId = backStackEntry.arguments?.getString("chatId") ?: return@composable
             val chatViewModel: com.example.nexus.feature_chat.viewmodel.ChatViewModel = hiltViewModel()
+            val groupViewModel: com.example.nexus.feature_chat.viewmodel.GroupViewModel = hiltViewModel()
             ChatInfoScreen(
                 chatId = chatId,
                 viewModel = chatViewModel,
+                groupViewModel = groupViewModel,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToChat = { navController.popBackStack() },
                 onNavigateToSharedMedia = { targetChatId, initialTab ->
@@ -427,8 +431,35 @@ fun NexusNavGraph(
                 onNavigateToChangePassword = {
                     navController.navigate(Screen.ChangePassword.route)
                 },
+                onNavigateToAddAccount = {
+                    navController.navigate(Screen.AddAccount.route)
+                },
                 onLogout = {
                     navController.navigate(Screen.Login.route) {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            inclusive = true
+                        }
+                    }
+                },
+                onSwitchAccount = {
+                    navController.navigate(Screen.ChatList.route) {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            inclusive = true
+                        }
+                    }
+                }
+            )
+        }
+
+        composable(Screen.AddAccount.route) {
+            val authViewModel: AuthViewModel = hiltViewModel()
+            LoginScreen(
+                viewModel = authViewModel,
+                onNavigateToRegister = {
+                    navController.navigate(Screen.Register.route)
+                },
+                onLoginSuccess = {
+                    navController.navigate(Screen.ChatList.route) {
                         popUpTo(navController.graph.findStartDestination().id) {
                             inclusive = true
                         }

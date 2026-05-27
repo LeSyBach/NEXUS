@@ -10,6 +10,7 @@ import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Environment
 import android.util.Patterns
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -283,7 +284,7 @@ fun ChatListScreen(
                     items(onlineFriendsState.size) { index ->
                         val friend = onlineFriendsState[index]
                         val name = friend.displayName.ifEmpty { friend.username }
-                        OnlineFriendItem(name = name)
+                        OnlineFriendItem(name = name, avatarUrl = friend.avatarUrl.ifEmpty { null })
                     }
                 }
             }
@@ -322,10 +323,11 @@ fun ChatListScreen(
 
                     ChatItem(
                         name = displayName,
+                        avatarUrl = viewModel?.resolveAvatarUrl(chat),
                         lastMessage = lastMessageText,
                         time = timeStr,
                         unreadCount = unreadCount,
-                        isOnline = false,
+                        isOnline = viewModel?.isUserOnline(chat) ?: false,
                         isPinned = chat.id in pinnedChatIds,
                         onClick = { onNavigateToConversation(chat.id) },
                         onLongClick = { showChatMenu = Pair(chat.id, displayName) }
@@ -421,7 +423,7 @@ fun ChatListScreen(
 }
 
 @Composable
-fun OnlineFriendItem(name: String) {
+fun OnlineFriendItem(name: String, avatarUrl: String? = null) {
     val nc = MaterialTheme.nexusColors
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
@@ -441,8 +443,17 @@ fun OnlineFriendItem(name: String) {
                     .background(nc.avatarBg),
                 contentAlignment = Alignment.Center
             ) {
-                val initial = name.firstOrNull()?.toString() ?: "?"
-                Text(initial, color = nc.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                if (!avatarUrl.isNullOrEmpty()) {
+                    AsyncImage(
+                        model = avatarUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    val initial = name.firstOrNull()?.toString() ?: "?"
+                    Text(initial, color = nc.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                }
             }
             
             Box(
@@ -463,6 +474,7 @@ fun OnlineFriendItem(name: String) {
 @Composable
 fun ChatItem(
     name: String,
+    avatarUrl: String? = null,
     lastMessage: String,
     time: String,
     unreadCount: Int,
@@ -523,8 +535,17 @@ fun ChatItem(
                         .background(nc.avatarBg),
                     contentAlignment = Alignment.Center
                 ) {
-                    val initial = name.firstOrNull()?.toString() ?: "?"
-                    Text(text = initial, color = nc.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    if (!avatarUrl.isNullOrEmpty()) {
+                        AsyncImage(
+                            model = avatarUrl,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        val initial = name.firstOrNull()?.toString() ?: "?"
+                        Text(text = initial, color = nc.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
                 
                 if (isOnline) {
@@ -779,6 +800,20 @@ fun ConversationScreen(
     }
     val avatarInitial = displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
 
+    // Resolve sender display names and avatars for group messages
+    var senderNameMap by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var senderAvatarMap by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    LaunchedEffect(isGroup, messagesState) {
+        if (!isGroup) return@LaunchedEffect
+        val messages = (messagesState as? Resource.Success)?.data ?: return@LaunchedEffect
+        val senderIds = messages.filter { it.senderId != currentUserId }
+            .map { it.senderId }.distinct()
+        if (senderIds.isEmpty()) return@LaunchedEffect
+        val users = viewModel?.getUsersByIds(senderIds) ?: return@LaunchedEffect
+        senderNameMap = users.associate { it.uid to it.displayName.ifEmpty { it.username } }
+        senderAvatarMap = users.associate { it.uid to (it.avatarUrl.ifEmpty { "" }) }
+    }
+
     // ── Scroll state for hiding floating button ──
     val isScrollingUp = listState.isScrollInProgress && listState.firstVisibleItemIndex > 0
 
@@ -808,7 +843,17 @@ fun ConversationScreen(
                     .background(nc.avatarBg),
                 contentAlignment = Alignment.Center
             ) {
-                Text(avatarInitial, color = nc.textPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                val avatarUrl = if (isGroup) currentChat?.groupAvatarUrl?.ifEmpty { null } else otherUser?.avatarUrl?.ifEmpty { null }
+                if (!avatarUrl.isNullOrEmpty()) {
+                    AsyncImage(
+                        model = avatarUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Text(avatarInitial, color = nc.textPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
             }
 
             Spacer(modifier = Modifier.width(10.dp))
@@ -940,10 +985,13 @@ fun ConversationScreen(
                                 val msg = messagesState.data[index]
                                 val isMe = msg.senderId == currentUserId
                                 val timeStr = msg.timestamp?.toDate()?.let { DateUtils.formatMessageTime(it.time) } ?: ""
+                                val resolvedSenderName = if (isGroup && !isMe) {
+                                    senderNameMap[msg.senderId] ?: msg.senderName.ifEmpty { displayName }
+                                } else msg.senderName
                                 val senderInitial = if (isMe) {
                                     ""
                                 } else {
-                                    val baseName = msg.senderName.ifEmpty { displayName }
+                                    val baseName = resolvedSenderName.ifEmpty { displayName }
                                     baseName.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
                                 }
                                 val isLastFromSender = if (!isMe) {
@@ -966,7 +1014,14 @@ fun ConversationScreen(
                                 // Only show status on the newest message, and only if I sent it
                                 val showStatus = isMe && index == 0 && msg.status != "recalled"
 
-                                if (msg.type == Constants.MESSAGE_TYPE_CALL) {
+                                if (msg.type == Constants.MESSAGE_TYPE_SYSTEM) {
+                                    SystemMessageBubble(
+                                        text = msg.text,
+                                        time = timeStr,
+                                        showDateSeparator = showDateSeparator,
+                                        dateSeparatorText = msg.timestamp?.toDate()?.let { DateUtils.formatDateSeparator(it.time) } ?: ""
+                                    )
+                                } else if (msg.type == Constants.MESSAGE_TYPE_CALL) {
                                     CallHistoryBubble(
                                         message = msg,
                                         isMe = isMe,
@@ -975,6 +1030,7 @@ fun ConversationScreen(
                                         dateSeparatorText = msg.timestamp?.toDate()?.let { DateUtils.formatDateSeparator(it.time) } ?: "",
                                         avatarInitial = senderInitial,
                                         showAvatar = !isMe && isLastFromSender,
+                                        avatarUrl = if (!isMe) senderAvatarMap[msg.senderId]?.ifEmpty { null } else null,
                                         sentBubbleColor = sentBubbleColor,
                                         onStartCall = {
                                             if (otherId.isNotEmpty()) onStartCall(otherId, msg.text, displayName)
@@ -996,6 +1052,8 @@ fun ConversationScreen(
                                         isOriginalRecalled = isOriginalRecalled,
                                         avatarInitial = senderInitial,
                                         showAvatar = !isMe && isLastFromSender,
+                                        senderName = if (isGroup && !isMe) resolvedSenderName else "",
+                                        avatarUrl = if (!isMe) senderAvatarMap[msg.senderId]?.ifEmpty { null } else null,
                                         messageType = msg.type,
                                         duration = msg.duration,
                                         message = msg,
@@ -1963,6 +2021,8 @@ fun MessageBubble(
     isOriginalRecalled: Boolean = false,
     avatarInitial: String = "",
     showAvatar: Boolean = false,
+    senderName: String = "",
+    avatarUrl: String? = null,
     messageType: String = Constants.MESSAGE_TYPE_TEXT,
     duration: Long = 0,
     message: Message? = null,
@@ -2010,7 +2070,7 @@ fun MessageBubble(
         ) {
             if (!isMe) {
                 if (showAvatar) {
-                    MessageAvatar(initial = avatarInitial, size = avatarSize, modifier = Modifier.align(Alignment.Bottom))
+                    MessageAvatar(initial = avatarInitial, size = avatarSize, modifier = Modifier.align(Alignment.Bottom), avatarUrl = avatarUrl)
                 } else {
                     Spacer(modifier = Modifier.size(avatarSize.dp).align(Alignment.Bottom))
                 }
@@ -2028,6 +2088,23 @@ fun MessageBubble(
             Column(
                 horizontalAlignment = if (isMe) Alignment.End else Alignment.Start
             ) {
+                // ── Sender name for group chats ──
+                if (senderName.isNotEmpty() && !isMe && showAvatar) {
+                    val senderColors = listOf(
+                        Color(0xFF3B82F6), Color(0xFF8B5CF6), Color(0xFF22C55E),
+                        Color(0xFFEF4444), Color(0xFFF97316), Color(0xFFEC4899),
+                        Color(0xFF14B8A6), Color(0xFFF59E0B)
+                    )
+                    val nameColor = senderColors[senderName.hashCode().and(0x7FFFFFFF) % senderColors.size]
+                    Text(
+                        text = senderName,
+                        color = nameColor,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(bottom = 2.dp, start = 2.dp)
+                    )
+                }
+
                 // ── Forwarded header ──
                 val forwardedFrom = message?.forwardedFrom
                 if (forwardedFrom != null && !isRecalled) {
@@ -2880,6 +2957,7 @@ fun CallHistoryBubble(
     dateSeparatorText: String = "",
     avatarInitial: String = "",
     showAvatar: Boolean = false,
+    avatarUrl: String? = null,
     sentBubbleColor: Color = MaterialTheme.nexusColors.sentBubble,
     onStartCall: () -> Unit
 ) {
@@ -2936,7 +3014,7 @@ fun CallHistoryBubble(
         ) {
             if (!isMe) {
                 if (showAvatar) {
-                    MessageAvatar(initial = avatarInitial, size = avatarSize)
+                    MessageAvatar(initial = avatarInitial, size = avatarSize, avatarUrl = avatarUrl)
                 } else {
                     Spacer(modifier = Modifier.size(avatarSize.dp))
                 }
@@ -3548,7 +3626,7 @@ fun ForwardMessageBottomSheet(
 }
 
 @Composable
-private fun MessageAvatar(initial: String, size: Int = 28, modifier: Modifier = Modifier) {
+private fun MessageAvatar(initial: String, size: Int = 28, modifier: Modifier = Modifier, avatarUrl: String? = null) {
     val nc = MaterialTheme.nexusColors
     val safeInitial = initial.ifBlank { "?" }
     Box(
@@ -3558,12 +3636,21 @@ private fun MessageAvatar(initial: String, size: Int = 28, modifier: Modifier = 
             .background(nc.avatarBg),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = safeInitial,
-            color = nc.textPrimary,
-            fontSize = (size / 2.2f).sp,
-            fontWeight = FontWeight.Bold
-        )
+        if (!avatarUrl.isNullOrEmpty()) {
+            AsyncImage(
+                model = avatarUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Text(
+                text = safeInitial,
+                color = nc.textPrimary,
+                fontSize = (size / 2.2f).sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
     }
 }
 
@@ -3689,14 +3776,301 @@ fun UploadProgressBubble(
 }
 
 @Composable
+fun SystemMessageBubble(
+    text: String,
+    time: String,
+    showDateSeparator: Boolean = false,
+    dateSeparatorText: String = ""
+) {
+    val nc = MaterialTheme.nexusColors
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        if (showDateSeparator && dateSeparatorText.isNotEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = dateSeparatorText,
+                    color = nc.textTertiary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier
+                        .background(nc.divider, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 14.dp, vertical = 5.dp)
+                )
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .background(nc.divider.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                .padding(horizontal = 14.dp, vertical = 6.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = text,
+                color = nc.textTertiary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Normal
+            )
+        }
+
+        Spacer(modifier = Modifier.height(2.dp))
+
+        Text(
+            text = time,
+            color = nc.textTertiary.copy(alpha = 0.6f),
+            fontSize = 10.sp
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 fun CreateGroupScreen(
+    viewModel: com.example.nexus.feature_chat.viewmodel.GroupViewModel? = null,
     onNavigateBack: () -> Unit,
     onGroupCreated: (String) -> Unit
 ) {
     val nc = MaterialTheme.nexusColors
-    Box(modifier = Modifier.fillMaxSize().background(nc.background), contentAlignment = Alignment.Center) {
-        Button(onClick = { onGroupCreated("new_group_id") }) {
-            Text("Create Group Screen")
+    val context = LocalContext.current
+    val friendsState = viewModel?.friendsList?.collectAsState()?.value ?: Resource.Idle
+    val selectedMembers = viewModel?.selectedMembers?.collectAsState()?.value ?: emptySet()
+    val groupName = viewModel?.groupName?.collectAsState()?.value ?: ""
+    val createState = viewModel?.createGroupState?.collectAsState()?.value ?: Resource.Idle
+    val avatarUri = viewModel?.groupAvatarUri?.collectAsState()?.value
+
+    LaunchedEffect(Unit) {
+        viewModel?.loadFriends()
+    }
+
+    LaunchedEffect(createState) {
+        if (createState is Resource.Success) {
+            onGroupCreated(createState.data)
+            viewModel?.clearCreateState()
+        }
+    }
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        uri?.let { viewModel?.setGroupAvatarUri(it) }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text("Tạo nhóm", color = nc.textPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = nc.textPrimary)
+                    }
+                },
+                actions = {
+                    val canCreate = groupName.isNotBlank() && selectedMembers.isNotEmpty()
+                    TextButton(
+                        onClick = { viewModel?.createGroup(context) },
+                        enabled = canCreate && createState !is Resource.Loading
+                    ) {
+                        if (createState is Resource.Loading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = NexusPrimary
+                            )
+                        } else {
+                            Text(
+                                "Tạo",
+                                color = if (canCreate) NexusPrimary else nc.textTertiary,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = nc.background,
+                    titleContentColor = nc.textPrimary
+                )
+            )
+        },
+        containerColor = nc.background
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            // ── Group Avatar + Name ──
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .clip(CircleShape)
+                        .background(nc.avatarBg)
+                        .clickable {
+                            photoPickerLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (avatarUri != null) {
+                        AsyncImage(
+                            model = avatarUri,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Icon(
+                            Icons.Default.CameraAlt,
+                            contentDescription = "Chọn ảnh",
+                            tint = nc.textSecondary,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedTextField(
+                    value = groupName,
+                    onValueChange = { viewModel?.setGroupName(it) },
+                    placeholder = {
+                        Text("Nhập tên nhóm", color = nc.textTertiary)
+                    },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = NexusPrimary,
+                        unfocusedBorderColor = nc.outline,
+                        focusedTextColor = nc.textPrimary,
+                        unfocusedTextColor = nc.textPrimary,
+                        cursorColor = NexusPrimary
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 32.dp)
+                )
+            }
+
+            // ── Selected count ──
+            if (selectedMembers.isNotEmpty()) {
+                Text(
+                    text = "Đã chọn ${selectedMembers.size} người",
+                    color = NexusPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+                )
+            }
+
+            Box(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(nc.divider))
+
+            // ── Friends List ──
+            when (friendsState) {
+                is Resource.Loading -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = NexusPrimary, strokeWidth = 2.dp)
+                    }
+                }
+                is Resource.Success -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(vertical = 8.dp)
+                    ) {
+                        items(friendsState.data.size) { index ->
+                            val friend = friendsState.data[index]
+                            val isSelected = selectedMembers.contains(friend.uid)
+                            val friendName = friend.displayName.ifEmpty { friend.username }
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { viewModel?.toggleMember(friend.uid) }
+                                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(nc.avatarBg),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (friend.avatarUrl.isNotEmpty()) {
+                                        AsyncImage(
+                                            model = friend.avatarUrl,
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    } else {
+                                        Text(
+                                            friendName.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
+                                            color = nc.textPrimary,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 16.sp
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.width(12.dp))
+
+                                Text(
+                                    text = friendName,
+                                    color = nc.textPrimary,
+                                    fontSize = 15.sp,
+                                    modifier = Modifier.weight(1f)
+                                )
+
+                                Checkbox(
+                                    checked = isSelected,
+                                    onCheckedChange = { viewModel?.toggleMember(friend.uid) },
+                                    colors = CheckboxDefaults.colors(
+                                        checkedColor = NexusPrimary,
+                                        uncheckedColor = nc.outline
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+                is Resource.Error -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            (friendsState as Resource.Error).message,
+                            color = nc.textSecondary,
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+                else -> {}
+            }
+
+            // ── Error toast ──
+            if (createState is Resource.Error) {
+                LaunchedEffect(createState) {
+                    Toast.makeText(context, (createState as Resource.Error).message, Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 }

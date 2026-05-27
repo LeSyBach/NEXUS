@@ -307,6 +307,10 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    suspend fun getUserById(userId: String): User? {
+        return chatRepository.getUserById(userId)
+    }
+
     suspend fun resolveDisplayName(chat: Chat): String {
         if (chat.type == "group") {
             return chat.groupName.ifEmpty { "Nhóm" }
@@ -316,7 +320,7 @@ class ChatViewModel @Inject constructor(
         if (otherId == null) return chat.groupName
 
         // Check nickname set by current user for the other person
-        val nickname = chat.nicknames[otherId] ?: chat.nicknames[myId]
+        val nickname = chat.nicknames[otherId]
         if (!nickname.isNullOrBlank()) return nickname
 
         userCache[otherId]?.let { user ->
@@ -332,6 +336,20 @@ class ChatViewModel @Inject constructor(
         } catch (_: Exception) {
             chat.groupName.ifEmpty { "Cuộc trò chuyện" }
         }
+    }
+
+    fun resolveAvatarUrl(chat: Chat): String? {
+        if (chat.type == "group") return chat.groupAvatarUrl.ifEmpty { null }
+        val myId = currentUserId ?: return null
+        val otherId = chat.participants.firstOrNull { it != myId } ?: return null
+        return userCache[otherId]?.avatarUrl?.ifEmpty { null }
+    }
+
+    fun isUserOnline(chat: Chat): Boolean {
+        if (chat.type == "group") return false
+        val myId = currentUserId ?: return false
+        val otherId = chat.participants.firstOrNull { it != myId } ?: return false
+        return userCache[otherId]?.status == Constants.USER_STATUS_ONLINE
     }
 
     fun sendMessage(chatId: String, text: String) {
@@ -726,10 +744,11 @@ class ChatViewModel @Inject constructor(
     fun updateChatNickname(chatId: String, targetUserId: String, nickname: String) {
         viewModelScope.launch {
             try {
-                val current = _nicknames.value.toMutableMap()
-                if (nickname.isBlank()) current.remove(targetUserId)
-                else current[targetUserId] = nickname
-                chatRepository.updateChatNicknames(chatId, current)
+                if (nickname.isBlank()) {
+                    chatRepository.removeChatNickname(chatId, targetUserId)
+                } else {
+                    chatRepository.setChatNickname(chatId, targetUserId, nickname)
+                }
             } catch (_: Exception) {}
         }
     }

@@ -189,6 +189,26 @@ class FirestoreService @Inject constructor(
             .await()
     }
 
+    suspend fun setChatNickname(chatId: String, targetId: String, nickname: String) {
+        firestore.collection(Constants.COLLECTION_CHATS)
+            .document(chatId)
+            .update(mapOf(
+                "nicknames.$targetId" to nickname,
+                "updatedAt" to Timestamp.now()
+            ))
+            .await()
+    }
+
+    suspend fun removeChatNickname(chatId: String, targetId: String) {
+        firestore.collection(Constants.COLLECTION_CHATS)
+            .document(chatId)
+            .update(mapOf(
+                "nicknames.$targetId" to FieldValue.delete(),
+                "updatedAt" to Timestamp.now()
+            ))
+            .await()
+    }
+
     suspend fun updateTypingStatus(chatId: String, userId: String, isTyping: Boolean) {
         val fieldValue = if (isTyping) {
             FieldValue.arrayUnion(userId)
@@ -729,6 +749,123 @@ class FirestoreService @Inject constructor(
         firestore.collection(Constants.COLLECTION_GROUPS)
             .document(groupId)
             .update("members", FieldValue.arrayRemove(member))
+            .await()
+    }
+
+    suspend fun createGroupChat(chat: Chat, group: Group): String {
+        val chatRef = firestore.collection(Constants.COLLECTION_CHATS).document()
+        val groupRef = firestore.collection(Constants.COLLECTION_GROUPS).document()
+        val chatWithId = chat.copy(id = chatRef.id)
+        val groupWithId = group.copy(id = groupRef.id, chatId = chatRef.id)
+        val batch = firestore.batch()
+        batch.set(chatRef, chatWithId)
+        batch.set(groupRef, groupWithId)
+        batch.commit().await()
+        return chatRef.id
+    }
+
+    fun observeGroup(groupId: String): Flow<Group?> = callbackFlow {
+        val listener = firestore.collection(Constants.COLLECTION_GROUPS)
+            .document(groupId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    close(error)
+                    return@addSnapshotListener
+                }
+                trySend(snapshot?.toObject(Group::class.java))
+            }
+        awaitClose { listener.remove() }
+    }
+
+    suspend fun promoteGroupMember(groupId: String, chatId: String, userId: String) {
+        val group = getGroup(groupId) ?: return
+        val updatedMembers = group.members.map { member ->
+            if (member.userId == userId) member.copy(role = Constants.ROLE_ADMIN) else member
+        }
+        firestore.collection(Constants.COLLECTION_GROUPS)
+            .document(groupId)
+            .update("members", updatedMembers)
+            .await()
+        firestore.collection(Constants.COLLECTION_CHATS)
+            .document(chatId)
+            .update("adminIds", FieldValue.arrayUnion(userId))
+            .await()
+    }
+
+    suspend fun demoteGroupMember(groupId: String, chatId: String, userId: String) {
+        val group = getGroup(groupId) ?: return
+        val updatedMembers = group.members.map { member ->
+            if (member.userId == userId) member.copy(role = Constants.ROLE_MEMBER) else member
+        }
+        firestore.collection(Constants.COLLECTION_GROUPS)
+            .document(groupId)
+            .update("members", updatedMembers)
+            .await()
+        firestore.collection(Constants.COLLECTION_CHATS)
+            .document(chatId)
+            .update("adminIds", FieldValue.arrayRemove(userId))
+            .await()
+    }
+
+    suspend fun removeGroupMemberByKick(groupId: String, chatId: String, member: GroupMember) {
+        val group = getGroup(groupId)
+        if (group != null) {
+            val updatedMembers = group.members.filter { it.userId != member.userId }
+            firestore.collection(Constants.COLLECTION_GROUPS)
+                .document(groupId)
+                .update("members", updatedMembers)
+                .await()
+        }
+        firestore.collection(Constants.COLLECTION_CHATS)
+            .document(chatId)
+            .update(
+                mapOf(
+                    "participants" to FieldValue.arrayRemove(member.userId),
+                    "adminIds" to FieldValue.arrayRemove(member.userId),
+                    "updatedAt" to Timestamp.now()
+                )
+            )
+            .await()
+    }
+
+    suspend fun addChatParticipant(chatId: String, userId: String) {
+        firestore.collection(Constants.COLLECTION_CHATS)
+            .document(chatId)
+            .update(
+                mapOf(
+                    "participants" to FieldValue.arrayUnion(userId),
+                    "updatedAt" to Timestamp.now()
+                )
+            )
+            .await()
+    }
+
+    suspend fun removeChatParticipant(chatId: String, userId: String) {
+        firestore.collection(Constants.COLLECTION_CHATS)
+            .document(chatId)
+            .update(
+                mapOf(
+                    "participants" to FieldValue.arrayRemove(userId),
+                    "adminIds" to FieldValue.arrayRemove(userId),
+                    "updatedAt" to Timestamp.now()
+                )
+            )
+            .await()
+    }
+
+    suspend fun dissolveGroup(chatId: String, groupId: String) {
+        firestore.collection(Constants.COLLECTION_GROUPS)
+            .document(groupId)
+            .delete()
+            .await()
+        firestore.collection(Constants.COLLECTION_CHATS)
+            .document(chatId)
+            .update(
+                mapOf(
+                    "participants" to emptyList<String>(),
+                    "updatedAt" to Timestamp.now()
+                )
+            )
             .await()
     }
 

@@ -22,6 +22,7 @@ data class SettingsUiState(
     val useSystemTheme: Boolean = true,
     val isDarkMode: Boolean = false,
     val savedAccounts: List<SavedAccount> = emptyList(),
+    val currentAccountEmail: String? = null,
     val isAppLockEnabled: Boolean = false,
     val biometricAvailable: Boolean = false
 )
@@ -61,6 +62,7 @@ class SettingsViewModel @Inject constructor(
             useSystemTheme = useSystem,
             isDarkMode = isDark ?: false,
             savedAccounts = accounts,
+            currentAccountEmail = accountManager.getCurrentAccountEmail(),
             isAppLockEnabled = appLock,
             biometricAvailable = biometricManager.canUseBiometric()
         )
@@ -86,6 +88,7 @@ class SettingsViewModel @Inject constructor(
             try {
                 authRepository.logout()
                 authRepository.login(email, password)
+                _savedAccounts.value = accountManager.getSavedAccounts()
                 _switchAccountState.value = Resource.Success(Unit)
             } catch (e: Exception) {
                 _switchAccountState.value = Resource.Error(e.message ?: "Chuyển tài khoản thất bại")

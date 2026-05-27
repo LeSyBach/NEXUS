@@ -58,6 +58,7 @@ sealed class Screen(
     data object EditProfile : Screen("edit_profile", "Chỉnh sửa")
     data object Settings : Screen("settings", "Cài đặt")
     data object ChangePassword : Screen("change_password", "Đổi mật khẩu")
+    data object AddAccount : Screen("add_account", "Thêm tài khoản")
 
     // ── Call ──
     data object OngoingCall : Screen("ongoing_call/{callId}/{callType}?receiverId={receiverId}&receiverName={receiverName}", "Cuộc gọi") {

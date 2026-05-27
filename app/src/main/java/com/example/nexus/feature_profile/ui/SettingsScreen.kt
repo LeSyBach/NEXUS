@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Key
@@ -37,6 +38,9 @@ import com.example.nexus.feature_profile.viewmodel.SettingsViewModel
 import com.example.nexus.ui.theme.NexusPrimary
 import com.example.nexus.ui.theme.NexusSecondary
 import com.example.nexus.ui.theme.nexusColors
+import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material3.CircularProgressIndicator
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,7 +48,9 @@ fun SettingsScreen(
     viewModel: SettingsViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToChangePassword: () -> Unit = {},
-    onLogout: () -> Unit = {}
+    onNavigateToAddAccount: () -> Unit = {},
+    onLogout: () -> Unit = {},
+    onSwitchAccount: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val switchState by viewModel.switchAccountState.collectAsState()
@@ -58,7 +64,8 @@ fun SettingsScreen(
     LaunchedEffect(switchState) {
         if (switchState is Resource.Success) {
             viewModel.resetSwitchAccountState()
-            onLogout()
+            viewModel.refreshAccounts()
+            onSwitchAccount()
         }
     }
 
@@ -224,33 +231,87 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // ── TÀI KHOẢN ĐÃ LƯU ──
-            if (uiState.savedAccounts.size > 1) {
-                SectionHeader("CHUYỂN TÀI KHOẢN")
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(nc.cardBg)
-                ) {
-                    uiState.savedAccounts.forEachIndexed { index, account ->
-                        AccountItem(
-                            account = account,
-                            isCurrent = account.email == uiState.savedAccounts.firstOrNull()?.email,
-                            onSwitch = {
-                                viewModel.switchAccount(account.email, account.encryptedPassword)
-                            },
-                            onRemove = {
-                                viewModel.removeAccount(account.email)
-                            }
-                        )
-                        if (index < uiState.savedAccounts.lastIndex) {
-                            HorizontalDivider(color = nc.divider, modifier = Modifier.padding(horizontal = 16.dp))
+            // ── TÀI KHOẢN ──
+            SectionHeader("CHUYỂN TÀI KHOẢN")
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(nc.cardBg)
+            ) {
+                // Loading overlay when switching
+                if (switchState is Resource.Loading) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = NexusPrimary,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text("Đang chuyển tài khoản...", color = nc.textSecondary, fontSize = 14.sp)
                         }
                     }
+                    HorizontalDivider(color = nc.divider, modifier = Modifier.padding(horizontal = 16.dp))
                 }
-                Spacer(modifier = Modifier.height(24.dp))
+
+                // Saved accounts list
+                uiState.savedAccounts.forEachIndexed { index, account ->
+                    AccountItem(
+                        account = account,
+                        isCurrent = account.email == uiState.currentAccountEmail,
+                        isSwitching = switchState is Resource.Loading,
+                        onSwitch = {
+                            viewModel.switchAccount(account.email, account.encryptedPassword)
+                        },
+                        onRemove = {
+                            viewModel.removeAccount(account.email)
+                        }
+                    )
+                    if (index < uiState.savedAccounts.lastIndex) {
+                        HorizontalDivider(color = nc.divider, modifier = Modifier.padding(horizontal = 16.dp))
+                    }
+                }
+
+                // Add account button
+                HorizontalDivider(color = nc.divider, modifier = Modifier.padding(horizontal = 16.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onNavigateToAddAccount() }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(NexusPrimary.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.PersonAdd,
+                            contentDescription = null,
+                            tint = NexusPrimary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        "Thêm tài khoản",
+                        color = NexusPrimary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
+
+            Spacer(modifier = Modifier.height(24.dp))
 
             // ── ĐĂNG XUẤT ──
             Box(
@@ -358,10 +419,10 @@ private fun SettingsMenuItem(
         Spacer(modifier = Modifier.width(16.dp))
         Text(title, color = nc.textPrimary, fontSize = 16.sp, modifier = Modifier.weight(1f))
         Icon(
-            Icons.Default.ArrowBack,
+            Icons.Default.ArrowForwardIos,
             contentDescription = null,
             tint = nc.iconTintSecondary,
-            modifier = Modifier.size(16.dp)
+            modifier = Modifier.size(14.dp)
         )
     }
 }
@@ -370,6 +431,7 @@ private fun SettingsMenuItem(
 private fun AccountItem(
     account: SavedAccount,
     isCurrent: Boolean,
+    isSwitching: Boolean = false,
     onSwitch: () -> Unit,
     onRemove: () -> Unit
 ) {
@@ -377,7 +439,7 @@ private fun AccountItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = !isCurrent, onClick = onSwitch)
+            .clickable(enabled = !isCurrent && !isSwitching, onClick = onSwitch)
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -421,10 +483,18 @@ private fun AccountItem(
         }
 
         if (isCurrent) {
-            Text("Hiện tại", color = NexusPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Icon(
+                Icons.Default.CheckCircle,
+                contentDescription = "Tài khoản hiện tại",
+                tint = NexusPrimary,
+                modifier = Modifier.size(22.dp)
+            )
         } else {
-            TextButton(onClick = onSwitch) {
-                Text("Chuyển", color = NexusPrimary, fontSize = 13.sp)
+            TextButton(
+                onClick = onSwitch,
+                enabled = !isSwitching
+            ) {
+                Text("Chuyển", color = if (isSwitching) nc.textTertiary else NexusPrimary, fontSize = 13.sp)
             }
         }
     }
