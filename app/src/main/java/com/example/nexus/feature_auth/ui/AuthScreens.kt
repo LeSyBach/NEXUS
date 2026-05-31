@@ -145,13 +145,19 @@ fun LoginScreen(
                 Spacer(modifier = Modifier.height(24.dp))
 
                 Row(
+                    horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Chưa có tài khoản? ", color = nc.textSecondary)
+                    Text(
+                        text = "Chưa có tài khoản? ",
+                        color = nc.textSecondary,
+                        maxLines = 1
+                    )
                     Text(
                         text = "Đăng ký ngay",
                         color = NexusPrimary,
                         fontWeight = FontWeight.Bold,
+                        maxLines = 1,
                         modifier = Modifier.clickable { onNavigateToRegister() }
                     )
                 }
@@ -285,13 +291,19 @@ fun RegisterScreen(
                 Spacer(modifier = Modifier.height(24.dp))
 
                 Row(
+                    horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Đã có tài khoản? ", color = nc.textSecondary)
+                    Text(
+                        text = "Đã có tài khoản? ",
+                        color = nc.textSecondary,
+                        maxLines = 1
+                    )
                     Text(
                         text = "Đăng nhập",
                         color = NexusPrimary,
                         fontWeight = FontWeight.Bold,
+                        maxLines = 1,
                         modifier = Modifier.clickable { onNavigateBack() }
                     )
                 }

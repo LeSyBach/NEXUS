@@ -48,6 +48,7 @@ data class Chat(
     val backgroundUrl: String = "",
     val themeColor: String = "",
     val nicknames: Map<String, String> = emptyMap(),
+    val pinnedMessage: PinnedMessage? = null,
     @ServerTimestamp
     val createdAt: Timestamp? = null,
     @ServerTimestamp
@@ -64,6 +65,17 @@ data class LastMessage(
     val type: String = "text",
     val timestamp: Timestamp? = null,
     val unreadCount: Map<String, Long> = emptyMap(),
+)
+
+/**
+ * Represents a pinned message reference in a chat.
+ */
+data class PinnedMessage(
+    val messageId: String = "",
+    val text: String = "",
+    val senderName: String = "",
+    val pinnedBy: String = "",
+    val pinnedAt: Timestamp? = null,
 )
 
 /**
@@ -89,6 +101,7 @@ data class Message(
     val reactions: Map<String, String> = emptyMap(), // userId -> emoji
     val replyTo: ReplyMessage? = null,
     val forwardedFrom: String? = null,
+    val mentions: List<String> = emptyList(),
     val hasLink: Boolean = false,
     @ServerTimestamp
     val timestamp: Timestamp? = null,

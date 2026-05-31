@@ -17,6 +17,7 @@ import com.example.nexus.data.firebase.VoiceRecorderHelper
 import com.example.nexus.data.model.Chat
 import com.example.nexus.data.model.Message
 import com.google.firebase.Timestamp
+import com.example.nexus.data.model.PinnedMessage
 import com.example.nexus.data.model.ReplyMessage
 import com.example.nexus.data.model.User
 import com.example.nexus.data.repository.ChatRepository
@@ -128,6 +129,9 @@ class ChatViewModel @Inject constructor(
 
     private val _smartReplies = MutableStateFlow<List<String>>(emptyList())
     val smartReplies: StateFlow<List<String>> = _smartReplies
+
+    private val _pinnedMessage = MutableStateFlow<PinnedMessage?>(null)
+    val pinnedMessage: StateFlow<PinnedMessage?> = _pinnedMessage
 
     private var _olderMessages = MutableStateFlow<List<Message>>(emptyList())
     private var _isLoadingMoreMessages = MutableStateFlow(false)
@@ -352,7 +356,7 @@ class ChatViewModel @Inject constructor(
         return userCache[otherId]?.status == Constants.USER_STATUS_ONLINE
     }
 
-    fun sendMessage(chatId: String, text: String) {
+    fun sendMessage(chatId: String, text: String, mentions: List<String> = emptyList()) {
         if (text.isBlank()) return
         val reply = _replyingToMessage.value?.let { msg ->
             val previewText = when (msg.type) {
@@ -374,7 +378,7 @@ class ChatViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
-                chatRepository.sendMessage(chatId, text.trim(), replyTo = reply)
+                chatRepository.sendMessage(chatId, text.trim(), replyTo = reply, mentions = mentions)
             } catch (_: Exception) {}
         }
     }
@@ -723,6 +727,7 @@ class ChatViewModel @Inject constructor(
         _themeColor.value = ""
         _nicknames.value = emptyMap()
         _isMuted.value = false
+        _pinnedMessage.value = null
     }
 
     fun loadSharedContentCounts(chatId: String) {
@@ -768,6 +773,7 @@ class ChatViewModel @Inject constructor(
                     _currentChat.value = chat
                     _themeColor.value = chat.themeColor
                     _nicknames.value = chat.nicknames
+                    _pinnedMessage.value = chat.pinnedMessage
                 }
             }
         }
@@ -786,6 +792,22 @@ class ChatViewModel @Inject constructor(
             } catch (_: Exception) {
                 _clearChatSuccess.emit(false)
             }
+        }
+    }
+
+    fun pinMessage(chatId: String, message: Message) {
+        viewModelScope.launch {
+            try {
+                chatRepository.pinMessage(chatId, message)
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun unpinMessage(chatId: String) {
+        viewModelScope.launch {
+            try {
+                chatRepository.unpinMessage(chatId)
+            } catch (_: Exception) {}
         }
     }
 

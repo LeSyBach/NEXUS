@@ -9,6 +9,7 @@ import com.example.nexus.data.model.Chat
 import com.example.nexus.data.model.Group
 import com.example.nexus.data.model.GroupMember
 import com.example.nexus.data.model.Message
+import com.example.nexus.data.model.PinnedMessage
 import com.example.nexus.data.model.ReplyMessage
 import com.google.firebase.Timestamp
 import com.example.nexus.data.model.User
@@ -62,7 +63,7 @@ class ChatRepository @Inject constructor(
         return firestoreService.loadMoreMessages(chatId, lastTimestamp)
     }
 
-    suspend fun sendMessage(chatId: String, text: String, replyTo: ReplyMessage? = null): Resource<Unit> {
+    suspend fun sendMessage(chatId: String, text: String, replyTo: ReplyMessage? = null, mentions: List<String> = emptyList()): Resource<Unit> {
         return try {
             val userId = authService.currentUserId ?: return Resource.Error("User not logged in")
             val currentUser = firestoreService.getUser(userId)
@@ -72,7 +73,8 @@ class ChatRepository @Inject constructor(
                 senderName = currentUser?.displayName?.ifEmpty { currentUser.username } ?: "Unknown",
                 text = text,
                 type = "text",
-                replyTo = replyTo
+                replyTo = replyTo,
+                mentions = mentions
             )
             firestoreService.sendMessage(chatId, message)
 
@@ -599,5 +601,13 @@ class ChatRepository @Inject constructor(
 
     fun observeGroup(groupId: String): Flow<Group?> {
         return firestoreService.observeGroup(groupId)
+    }
+
+    suspend fun pinMessage(chatId: String, message: Message) {
+        firestoreService.pinMessage(chatId, message)
+    }
+
+    suspend fun unpinMessage(chatId: String) {
+        firestoreService.unpinMessage(chatId)
     }
 }

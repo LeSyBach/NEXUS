@@ -97,9 +97,12 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -122,7 +125,9 @@ import com.example.nexus.core.utils.createTempVideoUri
 import com.example.nexus.core.utils.toReadableFileSize
 import com.example.nexus.data.model.Chat
 import com.example.nexus.data.model.Message
+import com.example.nexus.data.model.PinnedMessage
 import com.example.nexus.data.model.ReplyMessage
+import com.example.nexus.data.model.User
 import com.example.nexus.data.firebase.PlaybackState
 import com.example.nexus.feature_chat.viewmodel.ChatViewModel
 import com.example.nexus.feature_chat.viewmodel.UploadState
@@ -783,6 +788,12 @@ fun ConversationScreen(
     val clipboardManager = LocalClipboardManager.current
     val otherId = otherUser?.uid ?: ""
 
+    // Pin & Mention state
+    val pinnedMessage = viewModel?.pinnedMessage?.collectAsState()?.value
+    var showMentionPopup by remember { mutableStateOf(false) }
+    var mentionMembers by remember { mutableStateOf<List<User>>(emptyList()) }
+    val selectedMentions = remember { mutableStateListOf<String>() }
+
     val isGroup = currentChat?.type == Constants.CHAT_TYPE_GROUP
     val nicknames = viewModel?.nicknames?.collectAsState()?.value ?: emptyMap()
     val displayName = if (isGroup) {
@@ -813,6 +824,14 @@ fun ConversationScreen(
         val users = viewModel?.getUsersByIds(senderIds) ?: return@LaunchedEffect
         senderNameMap = users.associate { it.uid to it.displayName.ifEmpty { it.username } }
         senderAvatarMap = users.associate { it.uid to (it.avatarUrl.ifEmpty { "" }) }
+    }
+
+    // Load group members for @mention popup
+    LaunchedEffect(isGroup, currentChat) {
+        if (!isGroup) return@LaunchedEffect
+        val participantIds = currentChat?.participants ?: return@LaunchedEffect
+        val users = viewModel?.getUsersByIds(participantIds) ?: return@LaunchedEffect
+        mentionMembers = users.filter { it.uid != currentUserId }
     }
 
     // ── Scroll state for hiding floating button ──
@@ -929,6 +948,22 @@ fun ConversationScreen(
                 .weight(1f)
                 .fillMaxWidth()
         ) {
+            // Pinned message bar
+            pinnedMessage?.let { pinned ->
+                val messages = (messagesState as? Resource.Success)?.data ?: emptyList()
+                val pinnedIndex = messages.indexOfFirst { it.id == pinned.messageId }
+                PinnedMessageBar(
+                    pinnedMessage = pinned,
+                    onClick = {
+                        if (pinnedIndex >= 0) {
+                            coroutineScope.launch { listState.animateScrollToItem(pinnedIndex) }
+                        }
+                    },
+                    onUnpin = { viewModel?.unpinMessage(chatId) },
+                    modifier = Modifier.align(Alignment.TopCenter).zIndex(1f)
+                )
+            }
+
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize(),
@@ -3839,6 +3874,60 @@ fun SystemMessageBubble(
             fontSize = 10.sp,
             textAlign = TextAlign.Center
         )
+    }
+}
+
+@Composable
+fun PinnedMessageBar(
+    pinnedMessage: PinnedMessage,
+    onClick: () -> Unit,
+    onUnpin: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val nc = MaterialTheme.nexusColors
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = nc.surfaceVariant,
+        tonalElevation = 2.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Filled.PushPin,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = pinnedMessage.senderName,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = pinnedMessage.text,
+                    color = nc.textPrimary,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            IconButton(onClick = onUnpin, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "Bỏ ghim",
+                    tint = nc.textSecondary,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
     }
 }
 

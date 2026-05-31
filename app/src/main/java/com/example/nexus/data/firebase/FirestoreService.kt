@@ -169,6 +169,26 @@ class FirestoreService @Inject constructor(
             .await()
     }
 
+    suspend fun pinMessage(chatId: String, message: Message) {
+        val pinnedData = mapOf(
+            "pinnedMessage" to mapOf(
+                "messageId" to message.id,
+                "text" to message.text.take(100),
+                "senderName" to message.senderName,
+                "pinnedBy" to (message.senderId),
+                "pinnedAt" to Timestamp.now()
+            )
+        )
+        updateChat(chatId, pinnedData)
+    }
+
+    suspend fun unpinMessage(chatId: String) {
+        firestore.collection(Constants.COLLECTION_CHATS)
+            .document(chatId)
+            .update("pinnedMessage", FieldValue.delete())
+            .await()
+    }
+
     suspend fun updateChatTheme(chatId: String, themeColor: String) {
         firestore.collection(Constants.COLLECTION_CHATS)
             .document(chatId)
