@@ -209,6 +209,20 @@ class FirestoreService @Inject constructor(
             .await()
     }
 
+    suspend fun archiveChat(chatId: String, userId: String) {
+        firestore.collection(Constants.COLLECTION_CHATS)
+            .document(chatId)
+            .update("archivedBy", FieldValue.arrayUnion(userId))
+            .await()
+    }
+
+    suspend fun unarchiveChat(chatId: String, userId: String) {
+        firestore.collection(Constants.COLLECTION_CHATS)
+            .document(chatId)
+            .update("archivedBy", FieldValue.arrayRemove(userId))
+            .await()
+    }
+
     suspend fun setChatNickname(chatId: String, targetId: String, nickname: String) {
         firestore.collection(Constants.COLLECTION_CHATS)
             .document(chatId)
@@ -632,6 +646,25 @@ class FirestoreService @Inject constructor(
                     doc.toObject(FriendRequest::class.java)?.copy(id = doc.id)
                 } ?: emptyList()
                 trySend(requests)
+            }
+        awaitClose { listener.remove() }
+    }
+
+    /**
+     * Observes whether a pending friend request exists from [fromUser] to [toUser].
+     * Returns a Flow<Boolean> that emits true/false in real-time.
+     */
+    fun observeFriendRequestExists(fromUser: String, toUser: String): Flow<Boolean> = callbackFlow {
+        val listener = firestore.collection(Constants.COLLECTION_FRIEND_REQUESTS)
+            .whereEqualTo("fromUserId", fromUser)
+            .whereEqualTo("toUserId", toUser)
+            .whereEqualTo("status", Constants.FRIEND_REQUEST_PENDING)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    close(error)
+                    return@addSnapshotListener
+                }
+                trySend((snapshot?.size() ?: 0) > 0)
             }
         awaitClose { listener.remove() }
     }

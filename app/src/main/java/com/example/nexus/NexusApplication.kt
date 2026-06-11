@@ -9,16 +9,24 @@ import android.media.RingtoneManager
 import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.example.nexus.core.utils.PresenceManager
 import com.google.firebase.FirebaseApp
 import com.google.firebase.messaging.FirebaseMessaging
 import dagger.hilt.android.HiltAndroidApp
+import javax.inject.Inject
 
 @HiltAndroidApp
 class NexusApplication : Application() {
 
+    @Inject
+    lateinit var presenceManager: PresenceManager
+
     override fun onCreate() {
         super.onCreate()
         FirebaseApp.initializeApp(this)
+
+        // Register lifecycle observer for real-time presence
+        presenceManager.register()
 
         // Tạo notification channel ngay khi app khởi động.
         // PHẢI làm ở đây (Application), KHÔNG phải trong Service,

@@ -53,6 +53,7 @@ fun ChatInfoScreen(
     groupViewModel: GroupViewModel? = null,
     onNavigateBack: () -> Unit,
     onNavigateToChat: (String) -> Unit,
+    onNavigateToChatWithAction: (String, String) -> Unit = { _, _ -> },
     onNavigateToSharedMedia: (String, String) -> Unit = { _, _ -> },
     onStartCall: (String, String, String) -> Unit = { _, _, _ -> }
 ) {
@@ -92,6 +93,7 @@ fun ChatInfoScreen(
                 viewModel = viewModel,
                 onNavigateBack = onNavigateBack,
                 onNavigateToChat = onNavigateToChat,
+                onNavigateToChatWithAction = onNavigateToChatWithAction,
                 onNavigateToSharedMedia = onNavigateToSharedMedia,
                 onStartCall = onStartCall
             )
@@ -884,6 +886,7 @@ private fun DirectChatInfoContent(
     viewModel: ChatViewModel?,
     onNavigateBack: () -> Unit,
     onNavigateToChat: (String) -> Unit,
+    onNavigateToChatWithAction: (String, String) -> Unit = { _, _ -> },
     onNavigateToSharedMedia: (String, String) -> Unit,
     onStartCall: (String, String, String) -> Unit
 ) {
@@ -900,6 +903,17 @@ private fun DirectChatInfoContent(
     var showThemeDialog by remember { mutableStateOf(false) }
     var showNicknameDialog by remember { mutableStateOf(false) }
     var showBlockUserDialog by remember { mutableStateOf(false) }
+    var showUnblockDialog by remember { mutableStateOf(false) }
+
+    val relationship = viewModel?.relationship?.collectAsState()?.value ?: Constants.RELATION_NONE
+    val isBlocked = relationship == Constants.RELATION_BLOCKED
+
+    // Navigate back after successful block/unblock
+    LaunchedEffect(Unit) {
+        viewModel?.blockResult?.collect { success ->
+            if (success) onNavigateBack()
+        }
+    }
 
     val displayName = otherUser?.let { it.displayName.ifEmpty { it.username } } ?: "Đang tải..."
     val otherUserId = otherUser?.uid ?: ""
@@ -913,7 +927,7 @@ private fun DirectChatInfoContent(
     val lastSeenText = if (isOnline) {
         "Đang hoạt động"
     } else {
-        otherUser?.lastSeen?.let { DateUtils.formatLastSeen(it.toDate().time) } ?: "Offline"
+        otherUser?.lastSeen?.let { DateUtils.getRelativeTimeSpan(it.toDate().time) } ?: "Offline"
     }
 
     val themeOptions = listOf(
@@ -1185,7 +1199,7 @@ private fun DirectChatInfoContent(
                 title = "Chia sẻ liên hệ",
                 subtitle = null,
                 onClick = {
-                    Toast.makeText(context, "Tính năng đang phát triển", Toast.LENGTH_SHORT).show()
+                    onNavigateToChatWithAction(chatId, "share_contact")
                 }
             )
 
@@ -1194,7 +1208,7 @@ private fun DirectChatInfoContent(
                 title = "Tìm kiếm trong cuộc trò chuyện",
                 subtitle = null,
                 onClick = {
-                    Toast.makeText(context, "Tính năng đang phát triển", Toast.LENGTH_SHORT).show()
+                    onNavigateToChatWithAction(chatId, "search")
                 }
             )
 
@@ -1203,17 +1217,29 @@ private fun DirectChatInfoContent(
                 title = "Lưu trữ cuộc trò chuyện",
                 subtitle = null,
                 onClick = {
+                    viewModel?.archiveChat(chatId)
                     Toast.makeText(context, "Đã lưu trữ cuộc trò chuyện", Toast.LENGTH_SHORT).show()
+                    onNavigateBack()
                 }
             )
 
-            SettingsItem(
-                icon = Icons.Default.Block,
-                title = "Chặn người dùng",
-                subtitle = null,
-                onClick = { showBlockUserDialog = true },
-                isDestructive = true
-            )
+            if (isBlocked) {
+                SettingsItem(
+                    icon = Icons.Default.Block,
+                    title = "Bỏ chặn người dùng",
+                    subtitle = "Đang chặn",
+                    onClick = { showUnblockDialog = true },
+                    isDestructive = false
+                )
+            } else {
+                SettingsItem(
+                    icon = Icons.Default.Block,
+                    title = "Chặn người dùng",
+                    subtitle = null,
+                    onClick = { showBlockUserDialog = true },
+                    isDestructive = true
+                )
+            }
 
             SettingsItem(
                 icon = Icons.Default.Delete,
@@ -1367,9 +1393,44 @@ private fun DirectChatInfoContent(
             confirmButton = {
                 TextButton(onClick = {
                     showBlockUserDialog = false
-                    Toast.makeText(context, "Đã chặn $displayNameWithNickname", Toast.LENGTH_SHORT).show()
+                    viewModel?.blockUser(otherUserId)
                 }) {
                     Text("Chặn", color = NexusError)
+                }
+            }
+        )
+    }
+
+    // ══════ UNBLOCK USER CONFIRMATION DIALOG ══════
+    if (showUnblockDialog) {
+        AlertDialog(
+            onDismissRequest = { showUnblockDialog = false },
+            containerColor = nc.surface,
+            title = {
+                Text(
+                    "Bỏ chặn $displayNameWithNickname?",
+                    color = nc.textPrimary,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    "Người này sẽ có thể nhắn tin và gọi cho bạn lại",
+                    color = nc.textSecondary,
+                    fontSize = 14.sp
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { showUnblockDialog = false }) {
+                    Text("Hủy", color = nc.textSecondary)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showUnblockDialog = false
+                    viewModel?.unblockUser(otherUserId)
+                }) {
+                    Text("Bỏ chặn", color = NexusPrimary)
                 }
             }
         )

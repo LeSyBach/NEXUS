@@ -35,6 +35,10 @@ class ChatRepository @Inject constructor(
         return firestoreService.getUser(userId)
     }
 
+    fun observeUser(userId: String): Flow<User?> {
+        return firestoreService.observeUser(userId)
+    }
+
     fun observeChats(): Flow<Resource<List<Chat>>> = flow {
         emit(Resource.Loading)
         val userId = authService.currentUserId
@@ -173,6 +177,16 @@ class ChatRepository @Inject constructor(
 
     suspend fun removeChatNickname(chatId: String, targetId: String) {
         firestoreService.removeChatNickname(chatId, targetId)
+    }
+
+    suspend fun archiveChat(chatId: String) {
+        val userId = getCurrentUserId() ?: return
+        firestoreService.archiveChat(chatId, userId)
+    }
+
+    suspend fun unarchiveChat(chatId: String) {
+        val userId = getCurrentUserId() ?: return
+        firestoreService.unarchiveChat(chatId, userId)
     }
 
     fun observeChat(chatId: String): Flow<Chat?> {
@@ -327,6 +341,49 @@ class ChatRepository @Inject constructor(
         }
     }
 
+    suspend fun sendContactMessage(
+        chatId: String,
+        contactUserId: String,
+        contactName: String,
+        contactPhone: String,
+        contactAvatarUrl: String
+    ): Resource<Unit> {
+        return try {
+            val userId = authService.currentUserId ?: return Resource.Error("User not logged in")
+            val currentUser = firestoreService.getUser(userId)
+
+            val message = Message(
+                senderId = userId,
+                senderName = currentUser?.displayName?.ifEmpty { currentUser.username } ?: "Unknown",
+                text = contactName,
+                type = Constants.MESSAGE_TYPE_CONTACT,
+                contactUserId = contactUserId,
+                contactName = contactName,
+                contactPhone = contactPhone,
+                contactAvatarUrl = contactAvatarUrl
+            )
+            firestoreService.sendMessage(chatId, message)
+
+            val chat = firestoreService.getChat(chatId)
+            if (chat != null) {
+                val otherParticipants = chat.participants.filter { it != userId }
+                for (receiverId in otherParticipants) {
+                    notificationService.sendMessageNotification(
+                        receiverId = receiverId,
+                        senderName = currentUser?.displayName?.ifEmpty { currentUser.username } ?: "User",
+                        messageText = "👤 Đã chia sẻ liên hệ: $contactName",
+                        chatId = chatId,
+                        senderId = userId
+                    )
+                }
+            }
+
+            Resource.Success(Unit)
+        } catch (e: Exception) {
+            Resource.Error(e.message ?: "Failed to send contact message")
+        }
+    }
+
     suspend fun forwardMessage(targetChatId: String, original: Message): Resource<Unit> {
         return try {
             val userId = authService.currentUserId ?: return Resource.Error("User not logged in")
@@ -341,6 +398,10 @@ class ChatRepository @Inject constructor(
                 fileName = original.fileName,
                 fileSize = original.fileSize,
                 duration = original.duration,
+                contactUserId = original.contactUserId,
+                contactName = original.contactName,
+                contactPhone = original.contactPhone,
+                contactAvatarUrl = original.contactAvatarUrl,
                 forwardedFrom = forwardedFrom
             )
             firestoreService.sendMessage(targetChatId, newMessage)

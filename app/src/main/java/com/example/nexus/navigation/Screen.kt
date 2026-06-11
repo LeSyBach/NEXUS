@@ -32,8 +32,10 @@ sealed class Screen(
     data object Profile : Screen("profile", "Cá nhân")
 
     // ── Chat ──
-    data object Conversation : Screen("conversation/{chatId}", "Chat") {
-        fun createRoute(chatId: String) = "conversation/${Uri.encode(chatId)}"
+    data object Conversation : Screen("conversation/{chatId}?action={action}", "Chat") {
+        fun createRoute(chatId: String, action: String = "") =
+            if (action.isEmpty()) "conversation/${Uri.encode(chatId)}"
+            else "conversation/${Uri.encode(chatId)}?action=$action"
     }
     data object CreateGroup : Screen("create_group", "Tạo nhóm")
     data object GroupInfo : Screen("group_info/{groupId}", "Thông tin nhóm") {

@@ -1,8 +1,10 @@
 package com.example.nexus.feature_auth.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
@@ -15,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -29,6 +32,12 @@ import com.example.nexus.core.utils.Resource
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Scaffold
+import androidx.credentials.CredentialManager
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialException
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import kotlinx.coroutines.launch
 
 @Composable
 fun LoginScreen(
@@ -42,6 +51,41 @@ fun LoginScreen(
     val loginState by viewModel.loginState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val nc = MaterialTheme.nexusColors
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // Google Sign-In via Credential Manager
+    val credentialManager = remember { CredentialManager.create(context) }
+    val serverClientId = context.getString(com.example.nexus.R.string.web_client_id)
+
+    fun launchGoogleSignIn() {
+        val googleIdOption = GetGoogleIdOption.Builder()
+            .setFilterByAuthorizedAccounts(false)
+            .setServerClientId(serverClientId)
+            .setAutoSelectEnabled(true)
+            .build()
+
+        val request = GetCredentialRequest.Builder()
+            .addCredentialOption(googleIdOption)
+            .build()
+
+        scope.launch {
+            try {
+                val result = credentialManager.getCredential(
+                    context = context,
+                    request = request
+                )
+                val credential = result.credential
+                val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
+                val idToken = googleIdTokenCredential.idToken
+                viewModel.googleSignIn(idToken)
+            } catch (e: GetCredentialException) {
+                snackbarHostState.showSnackbar("Đăng nhập Google bị hủy hoặc thất bại")
+            } catch (e: Exception) {
+                snackbarHostState.showSnackbar(e.message ?: "Đăng nhập Google thất bại")
+            }
+        }
+    }
 
     LaunchedEffect(loginState) {
         when (loginState) {
@@ -141,6 +185,57 @@ fun LoginScreen(
                     isLoading = loginState is Resource.Loading,
                     onClick = { viewModel.login(email, password) }
                 )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(modifier = Modifier.weight(1f).height(1.dp).background(nc.textSecondary.copy(alpha = 0.3f)))
+                    Text(
+                        text = " HOẶC ",
+                        color = nc.textSecondary,
+                        fontSize = 12.sp
+                    )
+                    Box(modifier = Modifier.weight(1f).height(1.dp).background(nc.textSecondary.copy(alpha = 0.3f)))
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Google Sign-In button
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                        .border(
+                            width = 1.dp,
+                            color = nc.textSecondary.copy(alpha = 0.4f),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .clickable(enabled = loginState !is Resource.Loading) { launchGoogleSignIn() }
+                        .padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "G",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF4285F4)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Đăng nhập với Google",
+                            color = nc.textPrimary,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(24.dp))
 

@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">NEXUS</string>
+    <!-- Web client ID from Firebase Console > Authentication > Sign-in method > Google -->
+    <string name="web_client_id">547976875735-5vcbrjo45o3ok53nu9c20r9tbirr5s4s.apps.googleusercontent.com</string>
 </resources>

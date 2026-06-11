@@ -209,13 +209,18 @@ fun NexusNavGraph(
         // ══════ CHAT ══════
         composable(
             route = Screen.Conversation.route,
-            arguments = listOf(navArgument("chatId") { type = NavType.StringType })
+            arguments = listOf(
+                navArgument("chatId") { type = NavType.StringType },
+                navArgument("action") { type = NavType.StringType; defaultValue = "" }
+            )
         ) { backStackEntry ->
             val chatId = backStackEntry.arguments?.getString("chatId") ?: return@composable
+            val initialAction = backStackEntry.arguments?.getString("action") ?: ""
             val chatViewModel: com.example.nexus.feature_chat.viewmodel.ChatViewModel = hiltViewModel()
             ConversationScreen(
                 chatId = chatId,
                 viewModel = chatViewModel,
+                initialAction = initialAction,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToGroupInfo = { groupId ->
                     navController.navigate(Screen.ChatInfo.createRoute(groupId))
@@ -227,6 +232,9 @@ fun NexusNavGraph(
                         receiverId = receiverId,
                         receiverName = receiverName
                     ))
+                },
+                onNavigateToProfile = { userId ->
+                    navController.navigate(Screen.OtherUserProfile.createRoute(userId))
                 }
             )
         }
@@ -257,7 +265,16 @@ fun NexusNavGraph(
                 viewModel = chatViewModel,
                 groupViewModel = groupViewModel,
                 onNavigateBack = { navController.popBackStack() },
-                onNavigateToChat = { navController.popBackStack() },
+                onNavigateToChat = { targetChatId ->
+                    navController.navigate(Screen.Conversation.createRoute(targetChatId)) {
+                        popUpTo(Screen.Conversation.createRoute(targetChatId)) { inclusive = true }
+                    }
+                },
+                onNavigateToChatWithAction = { targetChatId, action ->
+                    navController.navigate(Screen.Conversation.createRoute(targetChatId, action)) {
+                        popUpTo(Screen.Conversation.createRoute(targetChatId)) { inclusive = true }
+                    }
+                },
                 onNavigateToSharedMedia = { targetChatId, initialTab ->
                     navController.navigate(Screen.SharedMedia.createRoute(targetChatId, initialTab))
                 },
@@ -309,7 +326,10 @@ fun NexusNavGraph(
             val contactViewModel: com.example.nexus.feature_contact.viewmodel.ContactViewModel = hiltViewModel()
             FriendRequestsScreen(
                 viewModel = contactViewModel,
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToProfile = { userId ->
+                    navController.navigate(Screen.OtherUserProfile.createRoute(userId))
+                }
             )
         }
 

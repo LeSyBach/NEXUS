@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.nexus.core.utils.Constants
+import com.example.nexus.core.utils.DateUtils
 import com.example.nexus.core.utils.Resource
 import com.example.nexus.data.model.FriendRequest
 import com.example.nexus.feature_contact.viewmodel.ContactViewModel
@@ -233,10 +234,16 @@ fun ContactListScreen(
                         )
                         LazyColumn(contentPadding = PaddingValues(bottom = 80.dp)) {
                             items(friendsListState.data) { friend ->
+                                val isOnline = friend.status == Constants.USER_STATUS_ONLINE
+                                val statusText = if (isOnline) {
+                                    "Đang hoạt động"
+                                } else {
+                                    friend.lastSeen?.let { DateUtils.getRelativeTimeSpan(it.toDate().time) } ?: ""
+                                }
                                 ContactItem(
                                     name = friend.displayName.ifEmpty { friend.username },
-                                    status = if (friend.status == Constants.USER_STATUS_ONLINE) "Đang hoạt động" else "",
-                                    isOnline = friend.status == Constants.USER_STATUS_ONLINE,
+                                    status = statusText,
+                                    isOnline = isOnline,
                                     avatarUrl = friend.avatarUrl.ifEmpty { null },
                                     onClick = { onNavigateToProfile(friend.uid) }
                                 )
@@ -303,7 +310,11 @@ fun ContactItem(name: String, status: String, isOnline: Boolean, avatarUrl: Stri
         Column(modifier = Modifier.weight(1f)) {
             Text(name, color = nc.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
             if (status.isNotEmpty()) {
-                Text(status, color = Color(0xFF22C55E), fontSize = 12.sp)
+                Text(
+                    status,
+                    color = if (isOnline) Color(0xFF22C55E) else nc.textSecondary,
+                    fontSize = 12.sp
+                )
             }
         }
         Icon(
@@ -527,7 +538,8 @@ fun SearchUserScreen(
 @Composable
 fun FriendRequestsScreen(
     viewModel: ContactViewModel? = null,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onNavigateToProfile: (String) -> Unit = {}
 ) {
     val nc = MaterialTheme.nexusColors
     val receivedState = viewModel?.friendRequests?.collectAsState()?.value ?: Resource.Idle
@@ -625,6 +637,10 @@ fun FriendRequestsScreen(
             )
             1 -> SentRequestsTab(
                 state = sentState,
+                onCancel = { targetUserId ->
+                    viewModel?.cancelFriendRequest(targetUserId)
+                },
+                onNavigateToProfile = onNavigateToProfile,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
@@ -689,6 +705,8 @@ private fun ReceivedRequestsTab(
 @Composable
 private fun SentRequestsTab(
     state: Resource<List<FriendRequest>>,
+    onCancel: (String) -> Unit = {},
+    onNavigateToProfile: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val nc = MaterialTheme.nexusColors
@@ -707,7 +725,11 @@ private fun SentRequestsTab(
                 } else {
                     LazyColumn(contentPadding = PaddingValues(vertical = 8.dp)) {
                         items(state.data) { request ->
-                            SentRequestItem(request = request)
+                            SentRequestItem(
+                                request = request,
+                                onCancel = { onCancel(request.toUserId) },
+                                onClick = { onNavigateToProfile(request.toUserId) }
+                            )
                         }
                     }
                 }
@@ -806,11 +828,16 @@ private fun ReceivedRequestItem(
 }
 
 @Composable
-private fun SentRequestItem(request: FriendRequest) {
+private fun SentRequestItem(
+    request: FriendRequest,
+    onCancel: () -> Unit = {},
+    onClick: () -> Unit = {}
+) {
     val nc = MaterialTheme.nexusColors
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -838,12 +865,18 @@ private fun SentRequestItem(request: FriendRequest) {
             )
             Text("Đã gửi lời mời kết bạn", color = nc.textSecondary, fontSize = 12.sp)
         }
-        Box(
+        IconButton(
+            onClick = onCancel,
             modifier = Modifier
-                .background(NexusPrimary.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
-                .padding(horizontal = 14.dp, vertical = 6.dp)
+                .size(40.dp)
+                .background(Color(0xFFEF4444).copy(alpha = 0.15f), CircleShape)
         ) {
-            Text("Đã gửi", color = NexusPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Icon(
+                Icons.Outlined.Close,
+                contentDescription = "Hủy yêu cầu",
+                tint = Color(0xFFEF4444),
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }

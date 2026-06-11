@@ -21,6 +21,7 @@ import com.example.nexus.data.model.PinnedMessage
 import com.example.nexus.data.model.ReplyMessage
 import com.example.nexus.data.model.User
 import com.example.nexus.data.repository.ChatRepository
+import com.example.nexus.data.repository.ContactRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -61,6 +62,7 @@ sealed class AiSummaryState {
 @HiltViewModel
 class ChatViewModel @Inject constructor(
     private val chatRepository: ChatRepository,
+    private val contactRepository: ContactRepository,
     private val mediaUploader: MediaUploader,
     private val voiceRecorderHelper: VoiceRecorderHelper,
     val audioPlayerHelper: AudioPlayerHelper,
@@ -103,6 +105,12 @@ class ChatViewModel @Inject constructor(
     private val _isMuted = MutableStateFlow(false)
     val isMuted: StateFlow<Boolean> = _isMuted
 
+    private val _relationship = MutableStateFlow(Constants.RELATION_NONE)
+    val relationship: StateFlow<String> = _relationship
+
+    private val _blockResult = MutableSharedFlow<Boolean>()
+    val blockResult = _blockResult.asSharedFlow()
+
     private val _clearChatSuccess = MutableSharedFlow<Boolean>()
     val clearChatSuccess = _clearChatSuccess.asSharedFlow()
 
@@ -133,6 +141,22 @@ class ChatViewModel @Inject constructor(
     private val _pinnedMessage = MutableStateFlow<PinnedMessage?>(null)
     val pinnedMessage: StateFlow<PinnedMessage?> = _pinnedMessage
 
+    // Search in conversation
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery
+
+    private val _searchResults = MutableStateFlow<List<Int>>(emptyList())
+    val searchResults: StateFlow<List<Int>> = _searchResults
+
+    private val _currentSearchIndex = MutableStateFlow(-1)
+    val currentSearchIndex: StateFlow<Int> = _currentSearchIndex
+
+    private val _isSearchActive = MutableStateFlow(false)
+    val isSearchActive: StateFlow<Boolean> = _isSearchActive
+
+    private val _showContactPicker = MutableStateFlow(false)
+    val showContactPicker: StateFlow<Boolean> = _showContactPicker
+
     private var _olderMessages = MutableStateFlow<List<Message>>(emptyList())
     private var _isLoadingMoreMessages = MutableStateFlow(false)
     val isLoadingMoreMessages: StateFlow<Boolean> = _isLoadingMoreMessages
@@ -146,8 +170,35 @@ class ChatViewModel @Inject constructor(
     private var amplitudeJob: Job? = null
 
     private val userCache = mutableMapOf<String, User>()
+
+    fun getDirectChatUsers(): List<User> {
+        val myId = currentUserId ?: return emptyList()
+        val chats = (_chatsState.value as? Resource.Success)?.data ?: return emptyList()
+        return chats
+            .filter { it.type == Constants.CHAT_TYPE_DIRECT }
+            .mapNotNull { chat ->
+                val otherId = chat.participants.firstOrNull { it != myId } ?: return@mapNotNull null
+                userCache[otherId]
+            }
+    }
+
+    data class ChatToShare(val chatId: String, val displayName: String, val avatarUrl: String?)
+
+    fun getChatsForSharing(): List<ChatToShare> {
+        val myId = currentUserId ?: return emptyList()
+        val chats = (_chatsState.value as? Resource.Success)?.data ?: return emptyList()
+        return chats
+            .filter { it.type == Constants.CHAT_TYPE_DIRECT }
+            .mapNotNull { chat ->
+                val otherId = chat.participants.firstOrNull { it != myId } ?: return@mapNotNull null
+                val user = userCache[otherId]
+                val name = user?.displayName?.ifEmpty { user.username } ?: chat.groupName.ifEmpty { "Chat" }
+                ChatToShare(chat.id, name, user?.avatarUrl?.ifEmpty { null })
+            }
+    }
     private var typingJob: Job? = null
     private var typingDebounceJob: Job? = null
+    private var otherUserJob: Job? = null
 
     val currentUserId: String?
         get() = chatRepository.getCurrentUserId()
@@ -169,26 +220,44 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    private var userObserverJobs = mutableListOf<Job>()
+
     private fun loadOnlineFriends(chats: List<Chat>) {
+        // Cancel previous observers
+        userObserverJobs.forEach { it.cancel() }
+        userObserverJobs.clear()
+
         viewModelScope.launch {
             try {
                 val myId = currentUserId ?: return@launch
-                val online = mutableListOf<User>()
-                for (chat in chats) {
-                    if (chat.type != Constants.CHAT_TYPE_DIRECT) continue
-                    val otherId = chat.participants.firstOrNull { it != myId } ?: continue
-                    val cached = userCache[otherId]
-                    val user = cached ?: try { chatRepository.getUserById(otherId) } catch (_: Exception) { null }
-                    if (user != null) {
-                        userCache[otherId] = user
-                        if (user.status == Constants.USER_STATUS_ONLINE) {
-                            online.add(user)
+                val otherIds = chats
+                    .filter { it.type == Constants.CHAT_TYPE_DIRECT }
+                    .mapNotNull { it.participants.firstOrNull { id -> id != myId } }
+                    .distinct()
+
+                // Observe each participant in real-time
+                for (otherId in otherIds) {
+                    val job = launch {
+                        chatRepository.observeUser(otherId).collect { user ->
+                            if (user != null) {
+                                userCache[otherId] = user
+                                // Refresh online friends list
+                                refreshOnlineFriends()
+                            }
                         }
                     }
+                    userObserverJobs.add(job)
                 }
-                _onlineFriends.value = online
             } catch (_: Exception) {}
         }
+    }
+
+    private fun refreshOnlineFriends() {
+        val myId = currentUserId ?: return
+        val online = userCache.values.filter {
+            it.status == Constants.USER_STATUS_ONLINE && it.uid != myId
+        }
+        _onlineFriends.value = online
     }
 
     fun loadMessages(chatId: String) {
@@ -209,6 +278,10 @@ class ChatViewModel @Inject constructor(
                         val user = try { chatRepository.getUserById(otherId) } catch (_: Exception) { null }
                         _otherUser.value = user
                         if (user != null) userCache[otherId] = user
+
+                        // Observe otherUser in real-time for status changes
+                        observeOtherUserRealtime(otherId)
+                        observeRelationship(otherId)
                     }
                 }
             } catch (_: Exception) {}
@@ -363,6 +436,7 @@ class ChatViewModel @Inject constructor(
                 Constants.MESSAGE_TYPE_IMAGE -> "📷 Hình ảnh"
                 Constants.MESSAGE_TYPE_VOICE -> "🎤 Tin nhắn thoại"
                 Constants.MESSAGE_TYPE_FILE -> "📎 ${msg.fileName.ifEmpty { "Tệp" }}"
+                Constants.MESSAGE_TYPE_CONTACT -> "👤 ${msg.contactName.ifEmpty { "Liên hệ" }}"
                 else -> msg.text
             }
             ReplyMessage(
@@ -711,6 +785,10 @@ class ChatViewModel @Inject constructor(
 
     fun clearConversationState() {
         stopObservingTyping()
+        otherUserJob?.cancel()
+        otherUserJob = null
+        relationshipJob?.cancel()
+        relationshipJob = null
         cancelVoicePreview()
         _currentChat.value = null
         _otherUser.value = null
@@ -728,6 +806,9 @@ class ChatViewModel @Inject constructor(
         _nicknames.value = emptyMap()
         _isMuted.value = false
         _pinnedMessage.value = null
+        _relationship.value = Constants.RELATION_NONE
+        clearSearch()
+        _showContactPicker.value = false
     }
 
     fun loadSharedContentCounts(chatId: String) {
@@ -780,6 +861,18 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             muteManager.isMutedFlow(chatId).collect { muted ->
                 _isMuted.value = muted
+            }
+        }
+    }
+
+    private fun observeOtherUserRealtime(userId: String) {
+        otherUserJob?.cancel()
+        otherUserJob = viewModelScope.launch {
+            chatRepository.observeUser(userId).collect { user ->
+                if (user != null) {
+                    _otherUser.value = user
+                    userCache[userId] = user
+                }
             }
         }
     }
@@ -860,5 +953,108 @@ class ChatViewModel @Inject constructor(
     fun dismissSmartReplies() {
         smartReplyJob?.cancel()
         _smartReplies.value = emptyList()
+    }
+
+    // ── Block / Unblock ──
+
+    fun blockUser(targetUserId: String) {
+        viewModelScope.launch {
+            val result = contactRepository.blockUser(targetUserId)
+            _blockResult.emit(result is Resource.Success)
+        }
+    }
+
+    fun unblockUser(targetUserId: String) {
+        viewModelScope.launch {
+            val result = contactRepository.unblockUser(targetUserId)
+            _blockResult.emit(result is Resource.Success)
+        }
+    }
+
+    fun archiveChat(chatId: String) {
+        viewModelScope.launch {
+            try { chatRepository.archiveChat(chatId) } catch (_: Exception) {}
+        }
+    }
+
+    fun unarchiveChat(chatId: String) {
+        viewModelScope.launch {
+            try { chatRepository.unarchiveChat(chatId) } catch (_: Exception) {}
+        }
+    }
+
+    fun sendContactMessage(
+        chatId: String,
+        contactUserId: String,
+        contactName: String,
+        contactPhone: String,
+        contactAvatarUrl: String
+    ) {
+        viewModelScope.launch {
+            try {
+                chatRepository.sendContactMessage(chatId, contactUserId, contactName, contactPhone, contactAvatarUrl)
+            } catch (_: Exception) {}
+        }
+    }
+
+    private var relationshipJob: Job? = null
+
+    private fun observeRelationship(targetUserId: String) {
+        relationshipJob?.cancel()
+        relationshipJob = viewModelScope.launch {
+            contactRepository.observeRelationship(targetUserId).collect { relation ->
+                _relationship.value = relation
+            }
+        }
+    }
+
+    // ── Search in conversation ──
+
+    fun startSearch() {
+        _isSearchActive.value = true
+    }
+
+    fun updateSearchQuery(query: String) {
+        _searchQuery.value = query
+        if (query.isBlank()) {
+            _searchResults.value = emptyList()
+            _currentSearchIndex.value = -1
+            return
+        }
+        val messages = (_messagesState.value as? Resource.Success)?.data ?: emptyList()
+        val matchingIndices = messages.indices.filter { index ->
+            messages[index].text.contains(query, ignoreCase = true)
+        }
+        _searchResults.value = matchingIndices
+        _currentSearchIndex.value = if (matchingIndices.isNotEmpty()) 0 else -1
+    }
+
+    fun navigateToNextResult() {
+        val results = _searchResults.value
+        if (results.isEmpty()) return
+        _currentSearchIndex.value = (_currentSearchIndex.value + 1) % results.size
+    }
+
+    fun navigateToPreviousResult() {
+        val results = _searchResults.value
+        if (results.isEmpty()) return
+        _currentSearchIndex.value = if (_currentSearchIndex.value <= 0) results.size - 1 else _currentSearchIndex.value - 1
+    }
+
+    fun clearSearch() {
+        _isSearchActive.value = false
+        _searchQuery.value = ""
+        _searchResults.value = emptyList()
+        _currentSearchIndex.value = -1
+    }
+
+    // ── Contact Picker ──
+
+    fun openContactPicker() {
+        _showContactPicker.value = true
+    }
+
+    fun dismissContactPicker() {
+        _showContactPicker.value = false
     }
 }

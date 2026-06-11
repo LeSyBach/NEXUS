@@ -98,18 +98,36 @@ class ContactViewModel @Inject constructor(
     fun respondToRequest(requestId: String, accept: Boolean, fromUserId: String) {
         viewModelScope.launch {
             val result = contactRepository.respondToRequest(requestId, accept, fromUserId)
-            if (result is Resource.Success && accept) {
-                loadFriendsList()
-            } else if (result is Resource.Error) {
+            if (result is Resource.Error) {
                 _respondResult.emit(result.message)
             }
+            // Real-time listener will auto-update friends list on accept
         }
     }
 
     fun loadFriendsList() {
         viewModelScope.launch {
-            _friendsList.value = Resource.Loading
-            _friendsList.value = contactRepository.getFriendsList()
+            contactRepository.observeFriendsList().collect { result ->
+                _friendsList.value = result
+            }
+        }
+    }
+
+    fun cancelFriendRequest(targetUserId: String) {
+        viewModelScope.launch {
+            val result = contactRepository.cancelFriendRequest(targetUserId)
+            if (result is Resource.Success) {
+                // Update local state immediately for instant UI feedback
+                _sentRequestIds.value = _sentRequestIds.value - targetUserId
+                val current = _sentRequests.value
+                if (current is Resource.Success) {
+                    _sentRequests.value = Resource.Success(
+                        current.data.filter { it.toUserId != targetUserId }
+                    )
+                }
+            } else if (result is Resource.Error) {
+                _sendRequestResult.emit(result.message)
+            }
         }
     }
 

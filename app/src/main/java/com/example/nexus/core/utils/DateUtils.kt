@@ -96,6 +96,34 @@ object DateUtils {
         }
     }
 
+    /**
+     * Formats last seen timestamp for presence display (Vietnamese).
+     * - < 1 min  -> "Vừa hoạt động"
+     * - < 60 min -> "Hoạt động X phút trước"
+     * - < 24h    -> "Hoạt động X giờ trước"
+     * - >= 24h   -> "Hoạt động X ngày trước"
+     */
+    fun getRelativeTimeSpan(lastSeenMillis: Long): String {
+        val now = System.currentTimeMillis()
+        val diff = now - lastSeenMillis
+        if (diff < 0) return "Vừa hoạt động"
+
+        val minutes = TimeUnit.MILLISECONDS.toMinutes(diff)
+        val hours = TimeUnit.MILLISECONDS.toHours(diff)
+        val days = TimeUnit.MILLISECONDS.toDays(diff)
+
+        return when {
+            minutes < 1 -> "Vừa hoạt động"
+            minutes < 60 -> "Hoạt động $minutes phút trước"
+            hours < 24 -> "Hoạt động $hours giờ trước"
+            days < 7 -> "Hoạt động $days ngày trước"
+            else -> {
+                val formatted = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(lastSeenMillis))
+                "Hoạt động $formatted"
+            }
+        }
+    }
+
     private fun isSameDay(cal1: Calendar, cal2: Calendar): Boolean {
         return cal1.get(Calendar.YEAR) == cal2.get(Calendar.YEAR)
                 && cal1.get(Calendar.DAY_OF_YEAR) == cal2.get(Calendar.DAY_OF_YEAR)

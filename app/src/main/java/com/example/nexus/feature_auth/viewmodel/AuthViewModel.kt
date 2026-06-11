@@ -75,6 +75,18 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    fun googleSignIn(idToken: String) {
+        viewModelScope.launch {
+            _loginState.value = Resource.Loading
+            try {
+                authRepository.loginWithGoogle(idToken)
+                _loginState.value = Resource.Success(Unit)
+            } catch (e: Exception) {
+                _loginState.value = Resource.Error(e.message ?: "Đăng nhập Google thất bại")
+            }
+        }
+    }
+
     fun resetLoginState() {
         _loginState.value = Resource.Idle
     }

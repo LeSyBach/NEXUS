@@ -11,8 +11,12 @@ import com.example.nexus.data.model.User
 import com.google.firebase.Timestamp
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -139,6 +143,43 @@ class ContactRepository @Inject constructor(
         }
     }
 
+    /**
+     * Observes the current user's friends list in real-time.
+     * When any friend's status changes (online/offline), the list is re-emitted.
+     */
+    fun observeFriendsList(): Flow<Resource<List<User>>> {
+        val userId = getCurrentUserId()
+        if (userId == null) return flow { emit(Resource.Error("Not logged in")) }
+
+        return firestoreService.observeUser(userId).flatMapLatest { currentUser ->
+            if (currentUser == null || currentUser.friends.isEmpty()) {
+                flowOf(Resource.Success(emptyList()))
+            } else {
+                combineUserFlows(currentUser.friends.map { firestoreService.observeUser(it) })
+            }
+        }.catch { emit(Resource.Error(it.message ?: "Lỗi tải danh bạ")) }
+    }
+
+    /**
+     * Combines a dynamic list of Flow<User?> into Flow<Resource<List<User>>>.
+     * Uses channelFlow to safely emit from multiple coroutines.
+     */
+    private fun combineUserFlows(flows: List<Flow<User?>>): Flow<Resource<List<User>>> = channelFlow {
+        if (flows.isEmpty()) {
+            send(Resource.Success(emptyList()))
+            return@channelFlow
+        }
+        val results = arrayOfNulls<User>(flows.size)
+        flows.forEachIndexed { index, flow ->
+            launch {
+                flow.collect { user ->
+                    results[index] = user
+                    send(Resource.Success(results.filterNotNull().toList()))
+                }
+            }
+        }
+    }
+
     // ── Get (or create) direct chat ──────────────────────────────────
     suspend fun getDirectChatId(friendId: String): String? {
         val userId = getCurrentUserId() ?: return null
@@ -183,47 +224,53 @@ class ContactRepository @Inject constructor(
     }
 
     // ── Observe relationship with another user ─────────────────────
-    fun observeRelationship(targetUserId: String): Flow<String> = flow {
-        val userId = getCurrentUserId() ?: run {
-            emit(Constants.RELATION_NONE)
-            return@flow
-        }
+    fun observeRelationship(targetUserId: String): Flow<String> {
+        val userId = getCurrentUserId()
+            ?: return flow { emit(Constants.RELATION_NONE) }
 
-        // Observe current user's document for real-time relationship changes
-        firestoreService.observeUser(userId).collect { currentUser ->
-            if (currentUser == null) {
-                emit(Constants.RELATION_NONE)
-                return@collect
+        return channelFlow {
+            var currentUser: User? = null
+            var hasPendingSent = false
+            var hasPendingReceived = false
+
+            fun emitRelation() {
+                val user = currentUser ?: run {
+                    trySend(Constants.RELATION_NONE); return
+                }
+                trySend(when {
+                    targetUserId in user.blockedUsers -> Constants.RELATION_BLOCKED
+                    targetUserId in user.friends -> Constants.RELATION_FRIENDS
+                    hasPendingSent -> Constants.RELATION_PENDING_SENT
+                    hasPendingReceived -> Constants.RELATION_PENDING_RECEIVED
+                    else -> Constants.RELATION_NONE
+                })
             }
 
-            // Check blocked first
-            if (targetUserId in currentUser.blockedUsers) {
-                emit(Constants.RELATION_BLOCKED)
-                return@collect
+            // 1. Observe current user document (friends, blocked)
+            launch {
+                firestoreService.observeUser(userId).collect { user ->
+                    currentUser = user
+                    emitRelation()
+                }
             }
 
-            // Check friends
-            if (targetUserId in currentUser.friends) {
-                emit(Constants.RELATION_FRIENDS)
-                return@collect
+            // 2. Observe sent requests from me → target (real-time)
+            launch {
+                firestoreService.observeFriendRequestExists(userId, targetUserId).collect { exists ->
+                    hasPendingSent = exists
+                    emitRelation()
+                }
             }
 
-            // Check friend requests in both directions
-            val sentRequest = firestoreService.checkExistingFriendRequest(userId, targetUserId)
-            if (sentRequest != null) {
-                emit(Constants.RELATION_PENDING_SENT)
-                return@collect
+            // 3. Observe received requests from target → me (real-time)
+            launch {
+                firestoreService.observeFriendRequestExists(targetUserId, userId).collect { exists ->
+                    hasPendingReceived = exists
+                    emitRelation()
+                }
             }
-
-            val receivedRequest = firestoreService.checkExistingFriendRequest(targetUserId, userId)
-            if (receivedRequest != null) {
-                emit(Constants.RELATION_PENDING_RECEIVED)
-                return@collect
-            }
-
-            emit(Constants.RELATION_NONE)
-        }
-    }.catch { emit(Constants.RELATION_NONE) }
+        }.catch { emit(Constants.RELATION_NONE) }
+    }
 
     // ── Block user ─────────────────────────────────────────────────
     suspend fun blockUser(targetUserId: String): Resource<Unit> {

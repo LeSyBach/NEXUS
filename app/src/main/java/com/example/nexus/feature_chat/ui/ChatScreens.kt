@@ -59,11 +59,13 @@ import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Forward
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PushPin
@@ -159,9 +161,11 @@ fun ChatListScreen(
     val nc = MaterialTheme.nexusColors
     val chatsState = viewModel?.chatsState?.collectAsState()?.value ?: Resource.Idle
     val onlineFriendsState = viewModel?.onlineFriends?.collectAsState()?.value ?: emptyList()
+    val currentUserId = viewModel?.currentUserId
     var showAddMenu by remember { mutableStateOf(false) }
     var pinnedChatIds by remember { mutableStateOf(setOf<String>()) }
     var showChatMenu by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var showArchived by remember { mutableStateOf(false) }
     Scaffold(
 //        floatingActionButton = {
 //            FloatingActionButton(
@@ -312,7 +316,75 @@ fun ChatListScreen(
                     }
                 }
             } else if (chatsState is Resource.Success && chatsState.data.isNotEmpty()) {
-                val sortedChats = chatsState.data.sortedByDescending { it.id in pinnedChatIds }
+                val allChats = chatsState.data
+                val archivedChats = allChats.filter { chat -> currentUserId != null && chat.archivedBy.contains(currentUserId) }
+                val activeChats = allChats.filter { chat -> currentUserId == null || !chat.archivedBy.contains(currentUserId) }
+                val sortedChats = activeChats.sortedByDescending { it.id in pinnedChatIds }
+
+                // Archived section
+                if (archivedChats.isNotEmpty()) {
+                    item {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showArchived = !showArchived }
+                                .padding(horizontal = 20.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Archive,
+                                contentDescription = null,
+                                tint = nc.textSecondary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                "Đã lưu trữ (${archivedChats.size})",
+                                color = nc.textSecondary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(
+                                Icons.Default.MoreVert,
+                                contentDescription = null,
+                                tint = nc.textSecondary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    if (showArchived) {
+                        items(archivedChats.size) { index ->
+                            val chat = archivedChats[index]
+                            val lastMessageText = chat.lastMessage?.text ?: "Chưa có tin nhắn"
+                            val timeStr = chat.lastMessage?.timestamp?.toDate()?.let { DateUtils.formatChatTime(it.time) } ?: ""
+                            var displayName by remember { mutableStateOf(chat.groupName.ifEmpty { "..." }) }
+                            LaunchedEffect(chat.id) {
+                                displayName = viewModel?.resolveDisplayName(chat) ?: chat.groupName
+                            }
+                            val myId = viewModel?.currentUserId
+                            val unreadCount = if (myId != null) (chat.lastMessage?.unreadCount?.get(myId) ?: 0L).toInt() else 0
+
+                            ChatItem(
+                                name = displayName,
+                                avatarUrl = viewModel?.resolveAvatarUrl(chat),
+                                lastMessage = lastMessageText,
+                                time = timeStr,
+                                unreadCount = unreadCount,
+                                isOnline = viewModel?.isUserOnline(chat) ?: false,
+                                isPinned = false,
+                                onClick = { onNavigateToConversation(chat.id) },
+                                onLongClick = {
+                                    // Unarchive on long press
+                                    viewModel?.unarchiveChat(chat.id)
+                                }
+                            )
+                        }
+                    }
+                }
+
+                // Active chats
                 items(sortedChats.size) { index ->
                     val chat = sortedChats[index]
                     val lastMessageText = chat.lastMessage?.text ?: "Chưa có tin nhắn"
@@ -393,6 +465,7 @@ fun ChatListScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
+                                viewModel?.archiveChat(chatId)
                                 showChatMenu = null
                             }
                             .padding(vertical = 12.dp),
@@ -629,9 +702,11 @@ fun ChatItem(
 fun ConversationScreen(
     chatId: String,
     viewModel: ChatViewModel? = null,
+    initialAction: String = "",
     onNavigateBack: () -> Unit,
     onNavigateToGroupInfo: (String) -> Unit,
-    onStartCall: (String, String, String) -> Unit = { _, _, _ -> }
+    onStartCall: (String, String, String) -> Unit = { _, _, _ -> },
+    onNavigateToProfile: (String) -> Unit = {}
 ) {
     val nc = MaterialTheme.nexusColors
     var messageText by remember { mutableStateOf("") }
@@ -715,6 +790,12 @@ fun ConversationScreen(
             }
         }
     }
+    val totalMessagesFromOthers = remember {
+        derivedStateOf {
+            val messages = (messagesState as? Resource.Success)?.data ?: emptyList()
+            messages.count { it.senderId != currentUserId }
+        }
+    }
 
     // Pagination state
     val isLoadingMore = viewModel?.isLoadingMoreMessages?.collectAsState()?.value ?: false
@@ -764,6 +845,14 @@ fun ConversationScreen(
         viewModel?.startObservingTyping(chatId)
     }
 
+    // Handle action from ChatInfoScreen navigation
+    LaunchedEffect(initialAction) {
+        when (initialAction) {
+            "search" -> viewModel?.startSearch()
+            "share_contact" -> viewModel?.openContactPicker()
+        }
+    }
+
     // Suppress push notification khi đang xem cuộc trò chuyện này
     DisposableEffect(chatId) {
         NexusMessagingService.activeChatId = chatId
@@ -782,7 +871,20 @@ fun ConversationScreen(
     }
 
     val isOtherTyping = viewModel?.isTyping?.collectAsState()?.value ?: false
+    val isSearchActive = viewModel?.isSearchActive?.collectAsState()?.value ?: false
+    val searchQuery = viewModel?.searchQuery?.collectAsState()?.value ?: ""
+    val searchResults = viewModel?.searchResults?.collectAsState()?.value ?: emptyList()
+    val currentSearchIndex = viewModel?.currentSearchIndex?.collectAsState()?.value ?: -1
     var showMessageMenu by remember { mutableStateOf<Pair<String, Message>?>(null) }
+    val showContactPicker = viewModel?.showContactPicker?.collectAsState()?.value ?: false
+
+    // Auto-scroll to current search result
+    LaunchedEffect(currentSearchIndex, searchResults) {
+        if (currentSearchIndex in searchResults.indices) {
+            val messageIndex = searchResults[currentSearchIndex]
+            listState.animateScrollToItem(messageIndex)
+        }
+    }
     var showFullScreenVideo by remember { mutableStateOf<String?>(null) }
     var messageToForward by remember { mutableStateOf<Message?>(null) }
     val clipboardManager = LocalClipboardManager.current
@@ -808,7 +910,7 @@ fun ConversationScreen(
         "${currentChat?.participants?.size ?: 0} thành viên"
     } else {
         if (otherUser?.status == Constants.USER_STATUS_ONLINE) "Đang hoạt động"
-        else otherUser?.lastSeen?.let { DateUtils.formatLastSeen(it.toDate().time) } ?: ""
+        else otherUser?.lastSeen?.let { DateUtils.getRelativeTimeSpan(it.toDate().time) } ?: ""
     }
     val avatarInitial = displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
 
@@ -918,6 +1020,60 @@ fun ConversationScreen(
 
         // Divider
         Box(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(nc.divider))
+
+        // ── Search Overlay ──
+        AnimatedVisibility(
+            visible = isSearchActive,
+            enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(nc.surface)
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = { viewModel?.clearSearch() }) {
+                    Icon(Icons.Default.Close, contentDescription = "Đóng tìm kiếm", tint = nc.textPrimary, modifier = Modifier.size(22.dp))
+                }
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { viewModel?.updateSearchQuery(it) },
+                    placeholder = { Text("Tìm kiếm tin nhắn...", color = nc.textTertiary, fontSize = 14.sp) },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = NexusPrimary,
+                        unfocusedBorderColor = nc.outline,
+                        focusedTextColor = nc.textPrimary,
+                        unfocusedTextColor = nc.textPrimary,
+                        cursorColor = NexusPrimary
+                    ),
+                    modifier = Modifier.weight(1f)
+                )
+                if (searchResults.isNotEmpty()) {
+                    Text(
+                        "${currentSearchIndex + 1}/${searchResults.size}",
+                        color = nc.textSecondary,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
+                    IconButton(onClick = { viewModel?.navigateToPreviousResult() }) {
+                        Icon(Icons.Default.ArrowUpward, contentDescription = "Kết quả trước", tint = nc.textPrimary, modifier = Modifier.size(22.dp))
+                    }
+                    IconButton(onClick = { viewModel?.navigateToNextResult() }) {
+                        Icon(Icons.Default.ArrowDownward, contentDescription = "Kết quả sau", tint = nc.textPrimary, modifier = Modifier.size(22.dp))
+                    }
+                } else if (searchQuery.isNotEmpty()) {
+                    Text(
+                        "0 kết quả",
+                        color = nc.textTertiary,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
+                }
+            }
+        }
 
         // ── Offline banner ──
         val isOffline = viewModel?.isOffline?.collectAsState()?.value ?: false
@@ -1077,6 +1233,8 @@ fun ConversationScreen(
                                         messagesState.data.find { it.id == msg.replyTo!!.messageId }?.status == "recalled"
                                     } else false
 
+                                    val isHighlight = searchResults.isNotEmpty() && currentSearchIndex in searchResults.indices && index == searchResults[currentSearchIndex]
+
                                     MessageBubble(
                                         text = msg.text,
                                         isMe = isMe,
@@ -1095,6 +1253,7 @@ fun ConversationScreen(
                                         message = msg,
                                         currentUserId = currentUserId,
                                         isSending = msg.isSending,
+                                        isSearchHighlight = isHighlight,
                                         sentBubbleColor = sentBubbleColor,
                                         onLongClick = { showMessageMenu = Pair(chatId, msg) },
                                         onReply = {
@@ -1115,6 +1274,9 @@ fun ConversationScreen(
                                         onForward = { messageToForward = msg },
                                         onVideoClick = {
                                             showFullScreenVideo = msg.text
+                                        },
+                                        onContactClick = { contactUserId ->
+                                            onNavigateToProfile(contactUserId)
                                         }
                                     )
                                 }
@@ -1779,7 +1941,7 @@ fun ConversationScreen(
 
         // ── Floating AI Summarize Button ──
         AnimatedVisibility(
-            visible = unreadFromOthers.value > 10 && !isScrollingUp,
+            visible = totalMessagesFromOthers.value >= 5,
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
             exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
             modifier = Modifier
@@ -2051,6 +2213,149 @@ fun ConversationScreen(
             }
         }
     }
+
+    // ── Contact Picker Bottom Sheet (share current chat partner to another conversation) ──
+    if (showContactPicker) {
+        val chatsForSharing = viewModel?.getChatsForSharing()?.filter { it.chatId != chatId } ?: emptyList()
+        val contactToShare = otherUser
+
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { viewModel?.dismissContactPicker() },
+            sheetState = sheetState,
+            containerColor = nc.background,
+            scrimColor = Color.Black.copy(alpha = 0.5f)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.6f)
+            ) {
+                Text(
+                    text = "Chia sẻ liên hệ",
+                    color = nc.textPrimary,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
+                )
+
+                // Show who is being shared
+                if (contactToShare != null) {
+                    val shareName = contactToShare.displayName.ifEmpty { contactToShare.username }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(nc.surface, RoundedCornerShape(12.dp))
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(nc.avatarBg),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (contactToShare.avatarUrl.isNotEmpty()) {
+                                AsyncImage(
+                                    model = contactToShare.avatarUrl,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                Text(
+                                    shareName.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
+                                    color = nc.textPrimary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text("Đang chia sẻ:", color = nc.textSecondary, fontSize = 12.sp)
+                            Text(shareName, color = nc.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                Text(
+                    text = "Gửi đến:",
+                    color = nc.textSecondary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+                )
+
+                if (chatsForSharing.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Không có cuộc trò chuyện nào", color = nc.textSecondary, fontSize = 14.sp)
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().weight(1f)
+                    ) {
+                        items(chatsForSharing.size) { index ->
+                            val targetChat = chatsForSharing[index]
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        if (contactToShare != null) {
+                                            viewModel?.sendContactMessage(
+                                                chatId = targetChat.chatId,
+                                                contactUserId = contactToShare.uid,
+                                                contactName = contactToShare.displayName.ifEmpty { contactToShare.username },
+                                                contactPhone = contactToShare.phone,
+                                                contactAvatarUrl = contactToShare.avatarUrl
+                                            )
+                                        }
+                                        viewModel?.dismissContactPicker()
+                                    }
+                                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(nc.avatarBg),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (!targetChat.avatarUrl.isNullOrEmpty()) {
+                                        AsyncImage(
+                                            model = targetChat.avatarUrl,
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    } else {
+                                        Text(
+                                            targetChat.displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
+                                            color = nc.textPrimary,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 16.sp
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    targetChat.displayName,
+                                    color = nc.textPrimary,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -2074,6 +2379,7 @@ fun MessageBubble(
     message: Message? = null,
     currentUserId: String? = null,
     isSending: Boolean = false,
+    isSearchHighlight: Boolean = false,
     sentBubbleColor: Color = MaterialTheme.nexusColors.sentBubble,
     onLongClick: (() -> Unit)? = null,
     onReply: (() -> Unit)? = null,
@@ -2081,7 +2387,8 @@ fun MessageBubble(
     onReactionsClick: ((Map<String, String>, String) -> Unit)? = null,
     onQuoteClick: ((String) -> Unit)? = null,
     onForward: (() -> Unit)? = null,
-    onVideoClick: (() -> Unit)? = null
+    onVideoClick: (() -> Unit)? = null,
+    onContactClick: ((String) -> Unit)? = null
 ) {
     val nc = MaterialTheme.nexusColors
     val avatarSize = 28
@@ -2089,6 +2396,14 @@ fun MessageBubble(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .then(
+                if (isSearchHighlight) {
+                    Modifier
+                        .background(NexusPrimary.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                        .border(1.5.dp, NexusPrimary.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                        .padding(2.dp)
+                } else Modifier
+            )
             .padding(vertical = 2.dp),
         horizontalAlignment = if (isMe) Alignment.End else Alignment.Start
     ) {
@@ -2214,6 +2529,7 @@ fun MessageBubble(
                             Constants.MESSAGE_TYPE_VIDEO -> "🎬 Video"
                             Constants.MESSAGE_TYPE_VOICE -> "🎤 Tin nhắn thoại"
                             Constants.MESSAGE_TYPE_FILE -> "📎 Tệp"
+                            Constants.MESSAGE_TYPE_CONTACT -> "👤 Liên hệ"
                             else -> replyTo.text
                         }
                         Box(
@@ -2830,6 +3146,142 @@ fun MessageBubble(
                                 }
                             }
                             if (!isMe) ForwardBtn()
+                        }
+                    } else if (messageType == Constants.MESSAGE_TYPE_CONTACT && !isRecalled) {
+                        // ── Contact bubble ──
+                        val contactUserId = message?.contactUserId ?: ""
+                        val contactName = message?.contactName ?: ""
+                        val contactPhone = message?.contactPhone ?: ""
+                        val contactAvatarUrl = message?.contactAvatarUrl ?: ""
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (isMe) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF2A2A2A))
+                                        .clickable { onForward?.invoke() },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.Reply,
+                                        contentDescription = "Chuyển tiếp",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp).graphicsLayer(scaleX = -1f)
+                                    )
+                                }
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .widthIn(max = 260.dp)
+                                    .then(if (reactions.isNotEmpty()) Modifier.padding(bottom = 12.dp) else Modifier)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .combinedClickable(
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null,
+                                            onClick = { if (contactUserId.isNotEmpty()) onContactClick?.invoke(contactUserId) },
+                                            onLongClick = onLongClick
+                                        )
+                                        .background(color = if (isMe) sentBubbleColor else nc.receivedBubble, shape = bubbleShape)
+                                        .padding(12.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(48.dp)
+                                                .clip(CircleShape)
+                                                .background(nc.avatarBg),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (contactAvatarUrl.isNotEmpty()) {
+                                                AsyncImage(
+                                                    model = contactAvatarUrl,
+                                                    contentDescription = null,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            } else {
+                                                Icon(
+                                                    Icons.Default.Person,
+                                                    contentDescription = null,
+                                                    tint = if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
+                                                    modifier = Modifier.size(28.dp)
+                                                )
+                                            }
+                                        }
+                                        Column {
+                                            Text(
+                                                text = contactName,
+                                                color = if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
+                                                fontSize = 15.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            if (contactPhone.isNotEmpty()) {
+                                                Text(
+                                                    text = contactPhone,
+                                                    color = if (isMe) nc.sentBubbleText.copy(alpha = 0.7f) else nc.receivedBubbleText.copy(alpha = 0.7f),
+                                                    fontSize = 13.sp
+                                                )
+                                            }
+                                            Text(
+                                                text = "Liên hệ",
+                                                color = if (isMe) nc.sentBubbleText.copy(alpha = 0.5f) else nc.receivedBubbleText.copy(alpha = 0.5f),
+                                                fontSize = 11.sp
+                                            )
+                                        }
+                                    }
+                                }
+                                if (reactions.isNotEmpty()) {
+                                    val displayEmoji = reactions.values.groupBy { e: String -> e }.maxByOrNull { entry -> entry.value.size }?.key ?: reactions.values.first()
+                                    val count = reactions.size
+                                    Box(modifier = Modifier.matchParentSize()) {
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.BottomEnd)
+                                                .offset(x = 2.dp, y = 10.dp)
+                                                .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
+                                                .background(nc.background, RoundedCornerShape(10.dp))
+                                                .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
+                                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(displayEmoji, fontSize = 14.sp)
+                                                if (count > 1) {
+                                                    Text(text = count.toString(), color = nc.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 1.dp))
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if (!isMe) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF2A2A2A))
+                                        .clickable { onForward?.invoke() },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.Reply,
+                                        contentDescription = "Chuyển tiếp",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp).graphicsLayer(scaleX = -1f)
+                                    )
+                                }
+                            }
                         }
                     } else {
                         // ── Text bubble: overlay reaction badge ──

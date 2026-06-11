@@ -49,6 +49,7 @@ data class Chat(
     val themeColor: String = "",
     val nicknames: Map<String, String> = emptyMap(),
     val pinnedMessage: PinnedMessage? = null,
+    val archivedBy: List<String> = emptyList(),
     @ServerTimestamp
     val createdAt: Timestamp? = null,
     @ServerTimestamp
@@ -102,6 +103,10 @@ data class Message(
     val replyTo: ReplyMessage? = null,
     val forwardedFrom: String? = null,
     val mentions: List<String> = emptyList(),
+    val contactUserId: String = "",
+    val contactName: String = "",
+    val contactPhone: String = "",
+    val contactAvatarUrl: String = "",
     val hasLink: Boolean = false,
     @ServerTimestamp
     val timestamp: Timestamp? = null,

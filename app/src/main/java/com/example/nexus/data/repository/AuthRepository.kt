@@ -115,6 +115,45 @@ class AuthRepository @Inject constructor(
         authService.sendPasswordResetEmail(email)
     }
 
+    suspend fun loginWithGoogle(idToken: String) {
+        val firebaseUser = authService.signInWithGoogle(idToken)
+        val userId = firebaseUser.uid
+
+        // Check if user document exists (returning user) or needs to be created (new user)
+        val existingUser = firestoreService.getUser(userId)
+        if (existingUser == null) {
+            // New Google user — create Firestore document
+            val displayName = firebaseUser.displayName ?: ""
+            val user = User(
+                uid = userId,
+                email = firebaseUser.email ?: "",
+                username = displayName.lowercase().replace(" ", "_"),
+                displayName = displayName,
+                status = Constants.USER_STATUS_ACTIVE,
+                avatarUrl = firebaseUser.photoUrl?.toString() ?: ""
+            )
+            firestoreService.createUser(user)
+        } else if (existingUser.status == Constants.USER_STATUS_PENDING_DELETION) {
+            // Reactivate account
+            firestoreService.updateUser(userId, mapOf(
+                "status" to Constants.USER_STATUS_ACTIVE,
+                "deletedAt" to FieldValue.delete()
+            ))
+        }
+
+        // Save credential for account switching (no password for Google accounts)
+        accountManager.addAccount(
+            SavedAccount(
+                email = firebaseUser.email ?: "",
+                encryptedPassword = "",
+                displayName = firebaseUser.displayName ?: existingUser?.displayName ?: "",
+                avatarUrl = firebaseUser.photoUrl?.toString() ?: existingUser?.avatarUrl ?: ""
+            )
+        )
+
+        saveFcmToken()
+    }
+
     suspend fun saveFcmToken() {
         try {
             val userId = authService.currentUserId ?: return
