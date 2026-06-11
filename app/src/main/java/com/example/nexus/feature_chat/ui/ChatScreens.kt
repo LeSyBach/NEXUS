@@ -151,6 +151,115 @@ import com.example.nexus.ui.theme.NexusSecondary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+fun ArchiveScreen(
+    viewModel: ChatViewModel? = null,
+    onNavigateToConversation: (String) -> Unit,
+    onNavigateToTab: (String) -> Unit = {}
+) {
+    val nc = MaterialTheme.nexusColors
+    val chatsState = viewModel?.chatsState?.collectAsState()?.value ?: Resource.Idle
+    val currentUserId = viewModel?.currentUserId
+
+    Scaffold(
+        bottomBar = {
+            NexusBottomBar(
+                currentRoute = Screen.Archive.route,
+                onNavigate = onNavigateToTab
+            )
+        },
+        containerColor = nc.background
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            // Header
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 16.dp)
+            ) {
+                Text(
+                    "Kho lưu trữ",
+                    color = nc.textPrimary,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.align(Alignment.CenterStart)
+                )
+            }
+
+            when (chatsState) {
+                is Resource.Loading -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = NexusPrimary)
+                    }
+                }
+                is Resource.Success -> {
+                    val allChats = chatsState.data
+                    val archivedChats = allChats.filter { chat ->
+                        currentUserId != null && chat.archivedBy.contains(currentUserId)
+                    }
+
+                    if (archivedChats.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    Icons.Default.Archive,
+                                    contentDescription = null,
+                                    tint = nc.textTertiary,
+                                    modifier = Modifier.size(64.dp)
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    "Không có đoạn chat nào đã lưu trữ",
+                                    color = nc.textTertiary,
+                                    fontSize = 15.sp
+                                )
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            items(archivedChats.size) { index ->
+                                val chat = archivedChats[index]
+                                val lastMessageText = chat.lastMessage?.text ?: "Chưa có tin nhắn"
+                                val timeStr = chat.lastMessage?.timestamp?.toDate()?.let { DateUtils.formatChatTime(it.time) } ?: ""
+                                var displayName by remember { mutableStateOf(chat.groupName.ifEmpty { "..." }) }
+                                LaunchedEffect(chat.id) {
+                                    displayName = viewModel?.resolveDisplayName(chat) ?: chat.groupName
+                                }
+                                val myId = viewModel?.currentUserId
+                                val unreadCount = if (myId != null) (chat.lastMessage?.unreadCount?.get(myId) ?: 0L).toInt() else 0
+
+                                ChatItem(
+                                    name = displayName,
+                                    avatarUrl = viewModel?.resolveAvatarUrl(chat),
+                                    lastMessage = lastMessageText,
+                                    time = timeStr,
+                                    unreadCount = unreadCount,
+                                    isOnline = viewModel?.isUserOnline(chat) ?: false,
+                                    isPinned = false,
+                                    onClick = { onNavigateToConversation(chat.id) },
+                                    onLongClick = { viewModel?.unarchiveChat(chat.id) }
+                                )
+                            }
+                        }
+                    }
+                }
+                else -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("Chưa có tin nhắn", color = nc.textTertiary, fontSize = 15.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 fun ChatListScreen(
     viewModel: ChatViewModel? = null,
     onNavigateToConversation: (String) -> Unit,
@@ -165,7 +274,6 @@ fun ChatListScreen(
     var showAddMenu by remember { mutableStateOf(false) }
     var pinnedChatIds by remember { mutableStateOf(setOf<String>()) }
     var showChatMenu by remember { mutableStateOf<Pair<String, String>?>(null) }
-    var showArchived by remember { mutableStateOf(false) }
     Scaffold(
 //        floatingActionButton = {
 //            FloatingActionButton(
@@ -317,72 +425,8 @@ fun ChatListScreen(
                 }
             } else if (chatsState is Resource.Success && chatsState.data.isNotEmpty()) {
                 val allChats = chatsState.data
-                val archivedChats = allChats.filter { chat -> currentUserId != null && chat.archivedBy.contains(currentUserId) }
                 val activeChats = allChats.filter { chat -> currentUserId == null || !chat.archivedBy.contains(currentUserId) }
                 val sortedChats = activeChats.sortedByDescending { it.id in pinnedChatIds }
-
-                // Archived section
-                if (archivedChats.isNotEmpty()) {
-                    item {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { showArchived = !showArchived }
-                                .padding(horizontal = 20.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Default.Archive,
-                                contentDescription = null,
-                                tint = nc.textSecondary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                "Đã lưu trữ (${archivedChats.size})",
-                                color = nc.textSecondary,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Icon(
-                                Icons.Default.MoreVert,
-                                contentDescription = null,
-                                tint = nc.textSecondary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-
-                    if (showArchived) {
-                        items(archivedChats.size) { index ->
-                            val chat = archivedChats[index]
-                            val lastMessageText = chat.lastMessage?.text ?: "Chưa có tin nhắn"
-                            val timeStr = chat.lastMessage?.timestamp?.toDate()?.let { DateUtils.formatChatTime(it.time) } ?: ""
-                            var displayName by remember { mutableStateOf(chat.groupName.ifEmpty { "..." }) }
-                            LaunchedEffect(chat.id) {
-                                displayName = viewModel?.resolveDisplayName(chat) ?: chat.groupName
-                            }
-                            val myId = viewModel?.currentUserId
-                            val unreadCount = if (myId != null) (chat.lastMessage?.unreadCount?.get(myId) ?: 0L).toInt() else 0
-
-                            ChatItem(
-                                name = displayName,
-                                avatarUrl = viewModel?.resolveAvatarUrl(chat),
-                                lastMessage = lastMessageText,
-                                time = timeStr,
-                                unreadCount = unreadCount,
-                                isOnline = viewModel?.isUserOnline(chat) ?: false,
-                                isPinned = false,
-                                onClick = { onNavigateToConversation(chat.id) },
-                                onLongClick = {
-                                    // Unarchive on long press
-                                    viewModel?.unarchiveChat(chat.id)
-                                }
-                            )
-                        }
-                    }
-                }
 
                 // Active chats
                 items(sortedChats.size) { index ->

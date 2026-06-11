@@ -25,6 +25,7 @@ import androidx.navigation.navArgument
 import com.example.nexus.feature_auth.ui.LoginScreen
 import com.example.nexus.feature_auth.ui.RegisterScreen
 import com.example.nexus.feature_auth.viewmodel.AuthViewModel
+import com.example.nexus.feature_chat.ui.ArchiveScreen
 import com.example.nexus.feature_chat.ui.ChatListScreen
 import com.example.nexus.feature_chat.ui.ConversationScreen
 import com.example.nexus.feature_chat.ui.ChatInfoScreen
@@ -163,26 +164,15 @@ fun NexusNavGraph(
             )
         }
 
-        composable(Screen.Groups.route) {
-            val nc = MaterialTheme.nexusColors
-            androidx.compose.material3.Scaffold(
-                bottomBar = {
-                    com.example.nexus.ui.components.NexusBottomBar(
-                        currentRoute = Screen.Groups.route,
-                        onNavigate = onNavigateToTab
-                    )
+        composable(Screen.Archive.route) {
+            val chatViewModel: com.example.nexus.feature_chat.viewmodel.ChatViewModel = hiltViewModel()
+            ArchiveScreen(
+                viewModel = chatViewModel,
+                onNavigateToConversation = { chatId ->
+                    navController.navigate(Screen.Conversation.createRoute(chatId))
                 },
-                containerColor = nc.background
-            ) { paddingValues ->
-                androidx.compose.foundation.layout.Box(
-                    modifier = androidx.compose.ui.Modifier
-                        .fillMaxSize()
-                        .padding(paddingValues),
-                    contentAlignment = androidx.compose.ui.Alignment.Center
-                ) {
-                    androidx.compose.material3.Text("Màn hình Nhóm đang phát triển", color = nc.textPrimary)
-                }
-            }
+                onNavigateToTab = onNavigateToTab
+            )
         }
 
         composable(Screen.Profile.route) {

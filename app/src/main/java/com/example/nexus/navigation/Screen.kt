@@ -5,8 +5,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Contacts
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.Chat
 import androidx.compose.material.icons.outlined.Contacts
@@ -29,6 +31,7 @@ sealed class Screen(
     data object ChatList : Screen("chat_list", "Tin nhắn")
     data object Contacts : Screen("contacts", "Danh bạ")
     data object Groups : Screen("groups", "Nhóm")
+    data object Archive : Screen("archive", "Kho lưu trữ")
     data object Profile : Screen("profile", "Cá nhân")
 
     // ── Chat ──
@@ -97,10 +100,10 @@ val bottomNavItems = listOf(
         label = "Danh bạ"
     ),
     BottomNavItem(
-        screen = Screen.Groups,
-        selectedIcon = Icons.Filled.Group,
-        unselectedIcon = Icons.Outlined.Group,
-        label = "Nhóm"
+        screen = Screen.Archive,
+        selectedIcon = Icons.Filled.Archive,
+        unselectedIcon = Icons.Outlined.Archive,
+        label = "Kho lưu trữ"
     ),
     BottomNavItem(
         screen = Screen.Profile,
