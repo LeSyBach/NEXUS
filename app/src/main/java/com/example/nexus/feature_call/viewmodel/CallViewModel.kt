@@ -87,6 +87,7 @@ class CallViewModel @Inject constructor(
             try {
                 val myId = currentUserId ?: return@launch
                 val currentUser = chatRepository.getUserById(myId)
+                val receiverUser = chatRepository.getUserById(receiverId)
                 val callId = callIdOverride ?: UUID.randomUUID().toString()
                 val signal = CallSignal(
                     callId = callId,
@@ -95,6 +96,7 @@ class CallViewModel @Inject constructor(
                     callerAvatar = currentUser?.avatarUrl ?: "",
                     receiverId = receiverId,
                     receiverName = receiverName,
+                    receiverAvatar = receiverUser?.avatarUrl ?: "",
                     type = type,
                     status = "ringing"
                 )
@@ -125,6 +127,35 @@ class CallViewModel @Inject constructor(
         _currentSignal.value = signal
         _callState.value = CallState.INCOMING
         _isVideoEnabled.value = signal.type == "video"
+    }
+
+    /**
+     * Load call signal from RTDB by callId.
+     * Suspend function — must be called from a coroutine.
+     * Used when navigating to IncomingCallScreen or OngoingCallScreen.
+     */
+    suspend fun loadCallSignal(callId: String) {
+        try {
+            val snapshot = com.google.firebase.database.FirebaseDatabase.getInstance()
+                .getReference("calls")
+                .child(callId)
+                .get()
+                .await()
+
+            val signal = snapshot.getValue(CallSignal::class.java)
+            if (signal != null) {
+                Log.d(TAG, "loadCallSignal: caller=${signal.callerName}, type=${signal.type}")
+                _currentSignal.value = signal
+                if (_callState.value == CallState.IDLE) {
+                    _callState.value = CallState.INCOMING
+                }
+                _isVideoEnabled.value = signal.type == "video"
+            } else {
+                Log.w(TAG, "loadCallSignal: signal not found for callId=$callId")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "loadCallSignal failed", e)
+        }
     }
 
     /**
@@ -169,12 +200,22 @@ class CallViewModel @Inject constructor(
         }
     }
 
-    fun acceptCall() {
+    fun acceptCall(callId: String? = null) {
         viewModelScope.launch {
             try {
-                val signal = _currentSignal.value ?: return@launch
+                var signal = _currentSignal.value
+                if (signal == null && callId != null) {
+                    // Signal not loaded yet — load from RTDB first (await completion)
+                    loadCallSignal(callId)
+                    signal = _currentSignal.value
+                }
+                if (signal == null) {
+                    Log.e(TAG, "acceptCall: signal is null, cannot proceed")
+                    return@launch
+                }
                 callSignalingService.acceptCall(signal.callId)
                 _callState.value = CallState.CONNECTED
+                _isVideoEnabled.value = signal.type == "video"
                 startDurationTimer()
                 startCallService(signal)
 

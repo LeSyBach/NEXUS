@@ -19,6 +19,7 @@ data class CallSignal(
     val callerAvatar: String = "",
     val receiverId: String = "",
     val receiverName: String = "",
+    val receiverAvatar: String = "",
     val type: String = "voice",
     val status: String = "ringing",
     val timestamp: Long = System.currentTimeMillis()

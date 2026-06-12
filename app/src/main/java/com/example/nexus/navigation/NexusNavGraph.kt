@@ -352,7 +352,17 @@ fun NexusNavGraph(
             val callType = backStackEntry.arguments?.getString("callType") ?: "voice"
             val receiverId = backStackEntry.arguments?.getString("receiverId") ?: ""
             val receiverName = backStackEntry.arguments?.getString("receiverName") ?: ""
-            val callViewModel: CallViewModel = hiltViewModel()
+
+            // Share ViewModel from IncomingCall back stack if available (accepted from UI)
+            // Otherwise create new (accepted from FCM notification or outgoing call)
+            val incomingEntry = remember {
+                try { navController.getBackStackEntry(Screen.IncomingCall.route) } catch (_: Exception) { null }
+            }
+            val callViewModel: CallViewModel = if (incomingEntry != null) {
+                hiltViewModel(incomingEntry)
+            } else {
+                hiltViewModel()
+            }
 
             // Permission check before initiating outgoing call
             var callStarted by remember { mutableStateOf(false) }
@@ -372,9 +382,9 @@ fun NexusNavGraph(
                     } else if (!permissions.allGranted) {
                         permissions.requestPermissions()
                     }
-                } else if (!callStarted) {
-                    // Incoming call accepted (from FCM notification or IncomingCallScreen)
-                    // receiverId is empty when accepting — load signal from RTDB
+                } else if (!callStarted && incomingEntry == null) {
+                    // Incoming call accepted from FCM notification (IncomingCall not in back stack)
+                    // Only call acceptCallFromNotification when NOT sharing ViewModel from IncomingCallScreen
                     callStarted = true
                     callViewModel.acceptCallFromNotification(callId, callType)
                 }
@@ -392,7 +402,9 @@ fun NexusNavGraph(
                 if (wasCallActive && callState == com.example.nexus.feature_call.viewmodel.CallState.ENDED) {
                     kotlinx.coroutines.delay(1500)
                     callViewModel.resetState()
+                    // Pop both OngoingCall and IncomingCall from back stack
                     navController.popBackStack()
+                    try { navController.popBackStack(Screen.IncomingCall.route, inclusive = true) } catch (_: Exception) {}
                 }
             }
 
@@ -417,9 +429,8 @@ fun NexusNavGraph(
                 viewModel = callViewModel,
                 onNavigateBack = { navController.popBackStack() },
                 onCallAccepted = { callType ->
-                    navController.navigate(Screen.OngoingCall.createRoute(callId, callType)) {
-                        popUpTo(Screen.IncomingCall.route) { inclusive = true }
-                    }
+                    // Don't pop IncomingCall — keep its ViewModel alive so OngoingCallScreen can share it
+                    navController.navigate(Screen.OngoingCall.createRoute(callId, callType))
                 }
             )
         }
