@@ -9,9 +9,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,8 +50,11 @@ fun LoginScreen(
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var showForgotPasswordDialog by remember { mutableStateOf(false) }
+    var forgotEmail by remember { mutableStateOf("") }
 
     val loginState by viewModel.loginState.collectAsState()
+    val forgotPasswordState by viewModel.forgotPasswordState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val nc = MaterialTheme.nexusColors
     val context = LocalContext.current
@@ -101,6 +107,77 @@ fun LoginScreen(
         }
     }
 
+    LaunchedEffect(forgotPasswordState) {
+        when (forgotPasswordState) {
+            is Resource.Success -> {
+                snackbarHostState.showSnackbar("Đã gửi email khôi phục! Kiểm tra hộp thư của bạn.")
+                showForgotPasswordDialog = false
+                forgotEmail = ""
+                viewModel.resetForgotPasswordState()
+            }
+            is Resource.Error -> {
+                snackbarHostState.showSnackbar((forgotPasswordState as Resource.Error).message)
+                viewModel.resetForgotPasswordState()
+            }
+            else -> {}
+        }
+    }
+
+    // Forgot Password Dialog
+    if (showForgotPasswordDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showForgotPasswordDialog = false
+                viewModel.resetForgotPasswordState()
+            },
+            containerColor = nc.surface,
+            title = {
+                Text("Quên mật khẩu", color = nc.textPrimary, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column {
+                    Text(
+                        "Nhập email để nhận link đặt lại mật khẩu.",
+                        color = nc.textSecondary,
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+                    NexusTextField(
+                        value = forgotEmail,
+                        onValueChange = { forgotEmail = it },
+                        label = "Email",
+                        leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = nc.textSecondary) },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Email)
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { viewModel.forgotPassword(forgotEmail) },
+                    enabled = forgotPasswordState !is Resource.Loading
+                ) {
+                    if (forgotPasswordState is Resource.Loading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            color = NexusPrimary,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text("GỬI", color = NexusPrimary, fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showForgotPasswordDialog = false
+                    viewModel.resetForgotPasswordState()
+                }) {
+                    Text("HỦY", color = nc.textSecondary)
+                }
+            }
+        )
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = Color.Transparent
@@ -111,10 +188,11 @@ fun LoginScreen(
                 .padding(paddingValues)
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(
-                            nc.background,
-                            Color(0xFF1A1A2E) // Deep purple/blue
-                        )
+                        colors = if (nc.isLight) {
+                            listOf(nc.background, Color(0xFFE0E7F1))
+                        } else {
+                            listOf(nc.background, Color(0xFF1A1A2E))
+                        }
                     )
                 ),
             contentAlignment = Alignment.Center
@@ -177,7 +255,10 @@ fun LoginScreen(
                     modifier = Modifier
                         .align(Alignment.End)
                         .padding(bottom = 24.dp)
-                        .clickable { /* Handle forgot password */ }
+                        .clickable {
+                            forgotEmail = email  // Pre-fill with entered email
+                            showForgotPasswordDialog = true
+                        }
                 )
 
                 NexusGradientButton(
@@ -301,10 +382,11 @@ fun RegisterScreen(
                 .padding(paddingValues)
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(
-                            nc.background,
-                            Color(0xFF1A1A2E)
-                        )
+                        colors = if (nc.isLight) {
+                            listOf(nc.background, Color(0xFFE0E7F1))
+                        } else {
+                            listOf(nc.background, Color(0xFF1A1A2E))
+                        }
                     )
                 ),
             contentAlignment = Alignment.Center

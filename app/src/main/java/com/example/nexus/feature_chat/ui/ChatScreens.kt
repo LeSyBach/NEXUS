@@ -272,7 +272,7 @@ fun ChatListScreen(
     val onlineFriendsState = viewModel?.onlineFriends?.collectAsState()?.value ?: emptyList()
     val currentUserId = viewModel?.currentUserId
     var showAddMenu by remember { mutableStateOf(false) }
-    var pinnedChatIds by remember { mutableStateOf(setOf<String>()) }
+    val pinnedChatIds by viewModel?.pinnedChatIds?.collectAsState() ?: remember { mutableStateOf(emptySet()) }
     var showChatMenu by remember { mutableStateOf<Pair<String, String>?>(null) }
     Scaffold(
 //        floatingActionButton = {
@@ -481,12 +481,7 @@ fun ChatListScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                pinnedChatIds = if (isChatPinned) {
-                                    pinnedChatIds - chatId
-                                } else {
-                                    if (pinnedChatIds.size < 3) pinnedChatIds + chatId
-                                    else pinnedChatIds
-                                }
+                                viewModel?.toggleChatPin(chatId)
                                 showChatMenu = null
                             }
                             .padding(vertical = 12.dp),
@@ -524,6 +519,7 @@ fun ChatListScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
+                                viewModel?.clearChatMessages(chatId)
                                 showChatMenu = null
                             }
                             .padding(vertical = 12.dp),
@@ -857,11 +853,9 @@ fun ConversationScreen(
             val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
             val canScrollForward = listState.canScrollForward
             Triple(total, lastVisible, canScrollForward)
-        }.collect { (total, lastVisible, canScrollForward) ->
-            android.util.Log.d("PAGINATION", "total=$total lastVisible=$lastVisible canScrollForward=$canScrollForward")
+        }.collect { (total, _, canScrollForward) ->
             // Trigger when user can't scroll further toward older messages (top of chat)
             if (total > 0 && !canScrollForward) {
-                android.util.Log.d("PAGINATION", "TRIGGERING loadMoreMessages!")
                 viewModel?.loadMoreMessages(chatId)
             }
         }
@@ -1129,7 +1123,7 @@ fun ConversationScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFFD32F2F))
+                    .background(nc.errorText)
                     .padding(horizontal = 16.dp, vertical = 6.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -1995,7 +1989,7 @@ fun ConversationScreen(
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(24.dp))
-                    .background(Color(0xFF2A2A2A).copy(alpha = 0.9f))
+                    .background(nc.cardBg.copy(alpha = 0.9f))
                     .clickable { viewModel?.summarizeMessages() }
                     .padding(horizontal = 16.dp, vertical = 10.dp)
             ) {
@@ -2623,14 +2617,14 @@ fun MessageBubble(
                                 modifier = Modifier
                                     .size(32.dp)
                                     .clip(CircleShape)
-                                    .background(Color(0xFF2A2A2A))
+                                    .background(nc.cardBg)
                                     .clickable { onForward?.invoke() },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     Icons.AutoMirrored.Filled.Reply,
                                     contentDescription = "Chuyển tiếp",
-                                    tint = Color.White,
+                                    tint = nc.iconTint,
                                     modifier = Modifier.size(18.dp).graphicsLayer(scaleX = -1f)
                                 )
                             }
@@ -2718,7 +2712,7 @@ fun MessageBubble(
                         val inlineExoPlayer = remember(text) {
                             ExoPlayer.Builder(context).build().apply {
                                 setMediaItem(MediaItem.fromUri(text))
-                                prepare()
+                                // Defer prepare() until user actually plays to prevent memory leaks
                             }
                         }
                         DisposableEffect(text) {
@@ -2772,7 +2766,7 @@ fun MessageBubble(
                                         .heightIn(max = 280.dp)
                                         .wrapContentSize()
                                         .clip(bubbleShape)
-                                        .background(color = Color(0xFF1A1A1A), shape = bubbleShape)
+                                        .background(color = nc.cardBg, shape = bubbleShape)
                                         .combinedClickable(
                                             interactionSource = remember { MutableInteractionSource() },
                                             indication = null,
@@ -2807,7 +2801,10 @@ fun MessageBubble(
                                                     .fillMaxWidth()
                                                     .clip(bubbleShape)
                                             )
-                                            LaunchedEffect(Unit) { inlineExoPlayer.play() }
+                                            LaunchedEffect(Unit) {
+                                                inlineExoPlayer.prepare()
+                                                inlineExoPlayer.play()
+                                            }
                                         }
                                     } else {
                                         // ── Thumbnail view ──
@@ -2833,7 +2830,7 @@ fun MessageBubble(
                                                 Box(
                                                     modifier = Modifier
                                                         .fillMaxSize()
-                                                        .background(Color(0xFF1A1A1A))
+                                                        .background(nc.cardBg)
                                                 )
                                             }
                                             // Center play button — triggers inline playback

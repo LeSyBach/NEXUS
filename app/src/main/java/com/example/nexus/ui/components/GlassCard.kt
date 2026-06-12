@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -13,10 +14,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
+import com.example.nexus.ui.theme.nexusColors
 
 /**
  * A custom card that provides a Glassmorphism effect.
- * Uses semi-transparent background and a subtle light border to simulate glass.
+ * Uses semi-transparent background and a subtle border to simulate glass.
+ * Adapts to light/dark mode automatically.
  */
 @Composable
 fun GlassCard(
@@ -24,29 +27,49 @@ fun GlassCard(
     shape: Shape = RoundedCornerShape(24.dp),
     content: @Composable BoxScope.() -> Unit
 ) {
+    val isLight = MaterialTheme.nexusColors.isLight
+
+    val glassBg = if (isLight) {
+        Brush.linearGradient(
+            colors = listOf(
+                Color.White.copy(alpha = 0.75f),
+                Color.White.copy(alpha = 0.55f)
+            )
+        )
+    } else {
+        Brush.linearGradient(
+            colors = listOf(
+                Color.White.copy(alpha = 0.1f),
+                Color.White.copy(alpha = 0.05f)
+            )
+        )
+    }
+
+    val glassBorder = if (isLight) {
+        Brush.linearGradient(
+            colors = listOf(
+                Color.Black.copy(alpha = 0.08f),
+                Color.Black.copy(alpha = 0.03f)
+            )
+        )
+    } else {
+        Brush.linearGradient(
+            colors = listOf(
+                Color.White.copy(alpha = 0.2f),
+                Color.White.copy(alpha = 0.0f)
+            )
+        )
+    }
+
     Box(
         modifier = modifier
             .clip(shape)
-            .background(
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.1f),
-                        Color.White.copy(alpha = 0.05f)
-                    )
-                )
-            )
+            .background(brush = glassBg)
             .border(
-                BorderStroke(
-                    1.dp,
-                    Brush.linearGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.2f),
-                            Color.White.copy(alpha = 0.0f)
-                        )
-                    )
-                ),
+                BorderStroke(1.dp, glassBorder),
                 shape = shape
             ),
         content = content
     )
 }
+

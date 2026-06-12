@@ -22,11 +22,11 @@ val NexusAccent = Color(0xFF4A90D9)
 val NexusAccentLight = Color(0xFF7AB8F5)
 
 // ── Dark Theme Colors ──
-val DarkBackground = Color(0xFF18191A)
-val DarkSurface = Color(0xFF242526)
-val DarkSurfaceVariant = Color(0xFF3A3B3C)
-val DarkCard = Color(0xFF3A3B3C)
-val DarkCardElevated = Color(0xFF4E4F50)
+val DarkBackground = Color(0xFF0F1419) // Premium Dark
+val DarkSurface = Color(0xFF1E2328)
+val DarkSurfaceVariant = Color(0xFF2F3336)
+val DarkCard = Color(0xFF1E2328) // Subtle border card
+val DarkCardElevated = Color(0xFF2F3336)
 val DarkOnBackground = Color(0xFFE8EAF0)
 val DarkOnSurface = Color(0xFFCFD2DA)
 val DarkOnSurfaceVariant = Color(0xFF9CA3AF)
@@ -34,7 +34,7 @@ val DarkOutline = Color(0xFF2D3B4E)
 val DarkOutlineVariant = Color(0xFF1F2937)
 
 // ── Light Theme Colors ──
-val LightBackground = Color(0xFFF4F4F4)
+val LightBackground = Color(0xFFF8FAFC) // Elegant Bright
 val LightSurface = Color(0xFFFFFFFF)
 val LightSurfaceVariant = Color(0xFFF0F2F5)
 val LightCard = Color(0xFFFFFFFF)
@@ -60,12 +60,12 @@ val OfflineGray = Color(0xFF6B7280)
 val TypingBlue = Color(0xFF60A5FA)
 
 // ── Chat Colors ──
-val SentBubbleDark = NexusPrimary
+val SentBubbleDark = Color(0xFF1D9BF0) // Twitter-blue
 val SentBubbleLight = NexusPrimary
-val ReceivedBubbleDark = Color(0xFF1E293B)
-val ReceivedBubbleLight = Color(0xFFE5E7EB)
-val ChatInputDark = Color(0xFF1A2332)
-val ChatInputLight = Color(0xFFF3F4F6)
+val ReceivedBubbleDark = Color(0xFF2F3336)
+val ReceivedBubbleLight = Color(0xFFF1F5F9)
+val ChatInputDark = Color(0xFF1E2328)
+val ChatInputLight = Color(0xFFFFFFFF)
 
 // ── Glassmorphism ──
 val GlassWhite = Color(0x1AFFFFFF)

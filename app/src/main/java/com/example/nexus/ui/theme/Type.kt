@@ -10,7 +10,7 @@ import androidx.compose.ui.unit.sp
 // NEXUS Typography - Clean, Modern, Readable
 // ══════════════════════════════════════════════════════════════
 
-val NexusFontFamily = FontFamily.Default
+val NexusFontFamily = FontFamily.SansSerif
 
 val NexusTypography = Typography(
     // Display
@@ -19,21 +19,21 @@ val NexusTypography = Typography(
         fontWeight = FontWeight.Bold,
         fontSize = 57.sp,
         lineHeight = 64.sp,
-        letterSpacing = (-0.25).sp
+        letterSpacing = (-1.0).sp
     ),
     displayMedium = TextStyle(
         fontFamily = NexusFontFamily,
         fontWeight = FontWeight.Bold,
         fontSize = 45.sp,
         lineHeight = 52.sp,
-        letterSpacing = 0.sp
+        letterSpacing = (-0.5).sp
     ),
     displaySmall = TextStyle(
         fontFamily = NexusFontFamily,
         fontWeight = FontWeight.Bold,
         fontSize = 36.sp,
         lineHeight = 44.sp,
-        letterSpacing = 0.sp
+        letterSpacing = (-0.25).sp
     ),
 
     // Headline
@@ -42,21 +42,21 @@ val NexusTypography = Typography(
         fontWeight = FontWeight.Bold,
         fontSize = 32.sp,
         lineHeight = 40.sp,
-        letterSpacing = 0.sp
+        letterSpacing = (-0.25).sp
     ),
     headlineMedium = TextStyle(
         fontFamily = NexusFontFamily,
         fontWeight = FontWeight.SemiBold,
         fontSize = 28.sp,
         lineHeight = 36.sp,
-        letterSpacing = 0.sp
+        letterSpacing = (-0.15).sp
     ),
     headlineSmall = TextStyle(
         fontFamily = NexusFontFamily,
         fontWeight = FontWeight.SemiBold,
         fontSize = 24.sp,
         lineHeight = 32.sp,
-        letterSpacing = 0.sp
+        letterSpacing = (-0.1).sp
     ),
 
     // Title
@@ -65,21 +65,21 @@ val NexusTypography = Typography(
         fontWeight = FontWeight.SemiBold,
         fontSize = 22.sp,
         lineHeight = 28.sp,
-        letterSpacing = 0.sp
+        letterSpacing = (-0.1).sp
     ),
     titleMedium = TextStyle(
         fontFamily = NexusFontFamily,
         fontWeight = FontWeight.SemiBold,
         fontSize = 16.sp,
         lineHeight = 24.sp,
-        letterSpacing = 0.15.sp
+        letterSpacing = (-0.1).sp
     ),
     titleSmall = TextStyle(
         fontFamily = NexusFontFamily,
         fontWeight = FontWeight.Medium,
         fontSize = 14.sp,
         lineHeight = 20.sp,
-        letterSpacing = 0.1.sp
+        letterSpacing = (-0.05).sp
     ),
 
     // Body
@@ -88,21 +88,21 @@ val NexusTypography = Typography(
         fontWeight = FontWeight.Normal,
         fontSize = 16.sp,
         lineHeight = 24.sp,
-        letterSpacing = 0.5.sp
+        letterSpacing = 0.sp
     ),
     bodyMedium = TextStyle(
         fontFamily = NexusFontFamily,
         fontWeight = FontWeight.Normal,
         fontSize = 14.sp,
         lineHeight = 20.sp,
-        letterSpacing = 0.25.sp
+        letterSpacing = 0.sp
     ),
     bodySmall = TextStyle(
         fontFamily = NexusFontFamily,
         fontWeight = FontWeight.Normal,
         fontSize = 12.sp,
         lineHeight = 16.sp,
-        letterSpacing = 0.4.sp
+        letterSpacing = 0.sp
     ),
 
     // Label
@@ -118,14 +118,14 @@ val NexusTypography = Typography(
         fontWeight = FontWeight.Medium,
         fontSize = 12.sp,
         lineHeight = 16.sp,
-        letterSpacing = 0.5.sp
+        letterSpacing = 0.1.sp
     ),
     labelSmall = TextStyle(
         fontFamily = NexusFontFamily,
         fontWeight = FontWeight.Medium,
         fontSize = 11.sp,
         lineHeight = 16.sp,
-        letterSpacing = 0.5.sp
-    ),
+        letterSpacing = 0.1.sp
+    )
 )
 

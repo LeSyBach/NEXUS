@@ -68,6 +68,7 @@ class ChatViewModel @Inject constructor(
     val audioPlayerHelper: AudioPlayerHelper,
     private val aiChatService: AiChatService,
     private val muteManager: MuteManager,
+    private val chatPreferencesManager: com.example.nexus.core.utils.ChatPreferencesManager,
     networkMonitor: NetworkMonitor
 ) : ViewModel() {
 
@@ -148,6 +149,9 @@ class ChatViewModel @Inject constructor(
     private val _searchResults = MutableStateFlow<List<Int>>(emptyList())
     val searchResults: StateFlow<List<Int>> = _searchResults
 
+    private val _pinnedChatIds = MutableStateFlow<Set<String>>(emptySet())
+    val pinnedChatIds: StateFlow<Set<String>> = _pinnedChatIds
+
     private val _currentSearchIndex = MutableStateFlow(-1)
     val currentSearchIndex: StateFlow<Int> = _currentSearchIndex
 
@@ -217,6 +221,21 @@ class ChatViewModel @Inject constructor(
                     }
                 }
             } catch (_: Exception) {}
+        }
+        viewModelScope.launch {
+            currentUserId?.let { uid ->
+                chatPreferencesManager.getPinnedChatIdsFlow(uid).collect { pinned ->
+                    _pinnedChatIds.value = pinned
+                }
+            }
+        }
+    }
+
+    fun toggleChatPin(chatId: String) {
+        viewModelScope.launch {
+            currentUserId?.let { uid ->
+                chatPreferencesManager.toggleChatPin(uid, chatId)
+            }
         }
     }
 

@@ -81,7 +81,8 @@ fun NEXUSTheme(
     content: @Composable () -> Unit
 ) {
     val colorScheme = if (darkTheme) NexusDarkColorScheme else NexusLightColorScheme
-    val nexusColors = if (darkTheme) DarkNexusColors else LightNexusColors
+    val targetNexusColors = if (darkTheme) DarkNexusColors else LightNexusColors
+    val nexusColors = animateNexusColorsAsState(targetColors = targetNexusColors)
 
     val view = LocalView.current
     if (!view.isInEditMode) {

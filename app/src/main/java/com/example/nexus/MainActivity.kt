@@ -8,6 +8,7 @@ import androidx.biometric.BiometricManager as AndroidBiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -24,6 +25,9 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -88,7 +92,19 @@ class MainActivity : FragmentActivity() {
             val darkTheme = if (useSystemTheme) isSystemDark else (isDarkMode ?: isSystemDark)
 
             NEXUSTheme(darkTheme = darkTheme) {
-                Box(modifier = Modifier.fillMaxSize()) {
+                val focusManager = LocalFocusManager.current
+                val keyboardController = LocalSoftwareKeyboardController.current
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectTapGestures(onTap = {
+                                focusManager.clearFocus()
+                                keyboardController?.hide()
+                            })
+                        }
+                ) {
                 Surface(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
                     val navController = rememberNavController()
                     val isLoggedIn = FirebaseAuth.getInstance().currentUser != null

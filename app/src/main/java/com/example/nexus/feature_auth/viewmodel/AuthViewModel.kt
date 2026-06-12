@@ -23,6 +23,9 @@ class AuthViewModel @Inject constructor(
     private val _registerState = MutableStateFlow<Resource<Unit>>(Resource.Idle)
     val registerState: StateFlow<Resource<Unit>> = _registerState.asStateFlow()
 
+    private val _forgotPasswordState = MutableStateFlow<Resource<Unit>>(Resource.Idle)
+    val forgotPasswordState: StateFlow<Resource<Unit>> = _forgotPasswordState.asStateFlow()
+
     fun login(email: String, password: String) {
         if (!ValidationUtils.isValidEmail(email)) {
             _loginState.value = Resource.Error("Email không hợp lệ")
@@ -93,5 +96,25 @@ class AuthViewModel @Inject constructor(
 
     fun resetRegisterState() {
         _registerState.value = Resource.Idle
+    }
+
+    fun forgotPassword(email: String) {
+        if (!ValidationUtils.isValidEmail(email)) {
+            _forgotPasswordState.value = Resource.Error("Email không hợp lệ")
+            return
+        }
+        viewModelScope.launch {
+            _forgotPasswordState.value = Resource.Loading
+            try {
+                authRepository.forgotPassword(email)
+                _forgotPasswordState.value = Resource.Success(Unit)
+            } catch (e: Exception) {
+                _forgotPasswordState.value = Resource.Error(e.message ?: "Gửi email khôi phục thất bại")
+            }
+        }
+    }
+
+    fun resetForgotPasswordState() {
+        _forgotPasswordState.value = Resource.Idle
     }
 }
