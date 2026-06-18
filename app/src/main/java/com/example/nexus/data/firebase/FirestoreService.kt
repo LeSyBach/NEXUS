@@ -990,4 +990,21 @@ class FirestoreService @Inject constructor(
     suspend fun deleteStory(storyId: String) {
         firestore.collection("stories").document(storyId).delete().await()
     }
+
+    suspend fun markStoryAsViewed(storyId: String, userId: String) {
+        firestore.collection("stories").document(storyId)
+            .update("viewedBy", com.google.firebase.firestore.FieldValue.arrayUnion(userId))
+            .await()
+    }
+
+    suspend fun deleteUserStoriesByType(userId: String, type: String) {
+        val snapshot = firestore.collection("stories")
+            .whereEqualTo("userId", userId)
+            .whereEqualTo("type", type)
+            .get()
+            .await()
+        for (doc in snapshot.documents) {
+            doc.reference.delete().await()
+        }
+    }
 }

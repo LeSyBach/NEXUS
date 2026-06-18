@@ -269,50 +269,46 @@ fun PreviewScreen(
     var captionText by remember { mutableStateOf("") }
     
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-        // Image and Text Overlay
-        Box(
+        // Image
+        coil.compose.AsyncImage(
+            model = uri,
+            contentDescription = null,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
                 .fillMaxHeight(0.6f)
                 .align(Alignment.Center)
-                .clip(RoundedCornerShape(48.dp))
+                .clip(RoundedCornerShape(48.dp)),
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+        )
+        
+        // Text field near bottom of image
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 100.dp, start = 24.dp, end = 24.dp)
+                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
-            coil.compose.AsyncImage(
-                model = uri,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+            androidx.compose.foundation.text.BasicTextField(
+                value = captionText,
+                onValueChange = { if (it.length <= 60) captionText = it },
+                textStyle = androidx.compose.ui.text.TextStyle(
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                ),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(Color.White),
+                decorationBox = { innerTextField ->
+                    if (captionText.isEmpty()) {
+                        Text("Thêm văn bản...", color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp, fontWeight = FontWeight.Medium, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                    } else {
+                        innerTextField()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
             )
-
-            // Text field overlaying the image
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 5.dp)
-                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                androidx.compose.foundation.text.BasicTextField(
-                    value = captionText,
-                    onValueChange = { if (it.length <= 60) captionText = it },
-                    textStyle = androidx.compose.ui.text.TextStyle(
-                        color = Color.White, 
-                        fontSize = 12.sp, 
-                        fontWeight = FontWeight.Bold,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    ),
-                    cursorBrush = androidx.compose.ui.graphics.SolidColor(Color.White),
-                    decorationBox = { innerTextField ->
-                        if (captionText.isEmpty()) {
-                            Text("Thêm văn bản...", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                        } else {
-                            innerTextField()
-                        }
-                    },
-                    modifier = Modifier.widthIn(min = 60.dp, max = 200.dp)
-                )
-            }
         }
 
         // Top bar

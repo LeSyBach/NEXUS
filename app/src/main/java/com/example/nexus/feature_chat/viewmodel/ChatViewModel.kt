@@ -4,6 +4,8 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import com.example.nexus.core.utils.Constants
 import com.example.nexus.core.utils.MuteManager
 import com.example.nexus.core.utils.NetworkMonitor
@@ -96,6 +98,12 @@ class ChatViewModel @Inject constructor(
 
     private val _stories = MutableStateFlow<Map<String, com.example.nexus.data.model.Story>>(emptyMap())
     val stories: StateFlow<Map<String, com.example.nexus.data.model.Story>> = _stories
+
+    private val _notes = MutableStateFlow<Map<String, com.example.nexus.data.model.Story>>(emptyMap())
+    val notes: StateFlow<Map<String, com.example.nexus.data.model.Story>> = _notes
+
+    private val _imageStories = MutableStateFlow<Map<String, List<com.example.nexus.data.model.Story>>>(emptyMap())
+    val imageStories: StateFlow<Map<String, List<com.example.nexus.data.model.Story>>> = _imageStories
 
     private val _isTyping = MutableStateFlow(false)
     val isTyping: StateFlow<Boolean> = _isTyping
@@ -227,13 +235,31 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             chatRepository.observeAllActiveStories().collect { storyList ->
                 val storyMap = mutableMapOf<String, com.example.nexus.data.model.Story>()
+                val noteMap = mutableMapOf<String, com.example.nexus.data.model.Story>()
+                val imageMap = mutableMapOf<String, MutableList<com.example.nexus.data.model.Story>>()
                 for (story in storyList) {
+                    // Keep most recent per user in main map
                     val existing = storyMap[story.userId]
                     if (existing == null || (story.createdAt?.toDate()?.time ?: 0) > (existing.createdAt?.toDate()?.time ?: 0)) {
                         storyMap[story.userId] = story
                     }
+                    // Split by type
+                    if (story.type == "image") {
+                        imageMap.getOrPut(story.userId) { mutableListOf() }.add(story)
+                    } else {
+                        val existingNote = noteMap[story.userId]
+                        if (existingNote == null || (story.createdAt?.toDate()?.time ?: 0) > (existingNote.createdAt?.toDate()?.time ?: 0)) {
+                            noteMap[story.userId] = story
+                        }
+                    }
+                }
+                // Sort each user's image stories by time (newest first)
+                for (entry in imageMap) {
+                    entry.value.sortByDescending { it.createdAt?.toDate()?.time ?: 0 }
                 }
                 _stories.value = storyMap
+                _notes.value = noteMap
+                _imageStories.value = imageMap
             }
         }
     }
@@ -250,22 +276,35 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    fun markStoryAsViewed(storyId: String) {
+        val uid = currentUserId ?: return
+        viewModelScope.launch {
+            chatRepository.markStoryAsViewed(storyId, uid)
+        }
+    }
+
     fun uploadAndPostStory(context: android.content.Context, uri: android.net.Uri, caption: String? = null) {
         viewModelScope.launch {
-            _uploadState.value = UploadState.Uploading()
-            try {
-                val imageUrl = mediaUploader.upload(context, uri)
-                if (imageUrl != null) {
-                    chatRepository.createStory(imageUrl, "image", caption)
-                    _uploadState.value = UploadState.Success
-                } else {
-                    _uploadState.value = UploadState.Error("Upload failed")
+            withContext(NonCancellable) {
+                _uploadState.value = UploadState.Uploading()
+                try {
+                    val imageUrl = mediaUploader.upload(context, uri)
+                    android.util.Log.d("ChatViewModel", "Upload result: imageUrl=$imageUrl")
+                    if (imageUrl != null) {
+                        val result = chatRepository.createStory(imageUrl, "image", caption)
+                        android.util.Log.d("ChatViewModel", "CreateStory result: $result, userId=$currentUserId")
+                        _uploadState.value = UploadState.Success
+                    } else {
+                        android.util.Log.e("ChatViewModel", "Image upload failed - returned null")
+                        _uploadState.value = UploadState.Error("Upload failed")
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("ChatViewModel", "uploadAndPostStory error", e)
+                    _uploadState.value = UploadState.Error(e.message ?: "Unknown error")
+                } finally {
+                    kotlinx.coroutines.delay(2000)
+                    _uploadState.value = UploadState.Idle
                 }
-            } catch (e: Exception) {
-                _uploadState.value = UploadState.Error(e.message ?: "Unknown error")
-            } finally {
-                kotlinx.coroutines.delay(2000)
-                _uploadState.value = UploadState.Idle
             }
         }
     }

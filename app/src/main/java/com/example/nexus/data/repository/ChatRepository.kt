@@ -679,12 +679,17 @@ class ChatRepository @Inject constructor(
     suspend fun createStory(content: String, type: String = "text", caption: String? = null): Resource<String> {
         return try {
             val userId = authService.currentUserId ?: return Resource.Error("User not logged in")
+            // Auto-delete old notes when posting a new one
+            if (type == "text") {
+                firestoreService.deleteUserStoriesByType(userId, "text")
+            }
+            val now = Timestamp.now()
             val story = com.example.nexus.data.model.Story(
                 userId = userId,
                 content = content,
                 type = type,
                 caption = caption,
-                createdAt = Timestamp.now(),
+                createdAt = now,
                 expiresAt = Timestamp(java.util.Date(System.currentTimeMillis() + 24 * 60 * 60 * 1000))
             )
             val id = firestoreService.createStory(story)
@@ -700,5 +705,9 @@ class ChatRepository @Inject constructor(
 
     suspend fun deleteStory(storyId: String) {
         firestoreService.deleteStory(storyId)
+    }
+
+    suspend fun markStoryAsViewed(storyId: String, userId: String) {
+        firestoreService.markStoryAsViewed(storyId, userId)
     }
 }

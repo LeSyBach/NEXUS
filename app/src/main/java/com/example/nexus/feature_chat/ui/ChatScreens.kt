@@ -267,9 +267,26 @@ fun ViewNoteDialog(
     user: User,
     isMyStory: Boolean = false,
     onDelete: (() -> Unit)? = null,
+    onNoteViewed: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val nc = MaterialTheme.nexusColors
+
+    LaunchedEffect(story.id) {
+        if (!isMyStory) onNoteViewed?.invoke()
+    }
+
+    val timeAgo = remember(story.createdAt) {
+        val diff = System.currentTimeMillis() - (story.createdAt?.toDate()?.time ?: 0L)
+        val mins = diff / 60000
+        when {
+            mins < 1 -> "Vừa xong"
+            mins < 60 -> "${mins}p trước"
+            mins < 1440 -> "${mins / 60}h trước"
+            else -> "${mins / 1440} ngày trước"
+        }
+    }
+
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
         Box(
             modifier = Modifier
@@ -298,56 +315,46 @@ fun ViewNoteDialog(
                             }
                         }
                         Spacer(modifier = Modifier.width(12.dp))
-                        Text(if (isMyStory) "Tin của bạn" else user.displayName.ifEmpty { user.username }, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Column {
+                            Text(if (isMyStory) "Ghi chú của bạn" else user.displayName.ifEmpty { user.username }, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            Text(timeAgo, color = Color.Gray, fontSize = 12.sp)
+                        }
                     }
                     IconButton(onClick = onDismiss) {
                         Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
                     }
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(32.dp))
 
-                // Content
+                // Content - Note style (centered text with avatar below)
                 Box(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (story.type == "image") {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .fillMaxHeight(0.8f)
-                                .align(Alignment.Center)
-                                .clip(RoundedCornerShape(24.dp))
-                        ) {
-                            AsyncImage(
-                                model = story.content,
-                                contentDescription = null,
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
-                            )
-                            if (!story.caption.isNullOrBlank()) {
-                                Box(
-                                    modifier = Modifier
-                                        .align(Alignment.BottomCenter)
-                                        .padding(bottom = 5.dp)
-                                        .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                                        .padding(horizontal = 12.dp, vertical = 6.dp)
-                                ) {
-                                    Text(story.caption, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-                                }
-                            }
-                        }
-                    } else {
-                        Box(
-                            modifier = Modifier.background(nc.surfaceVariant, RoundedCornerShape(24.dp)).padding(32.dp)
+                                .background(nc.surfaceVariant, RoundedCornerShape(24.dp))
+                                .padding(horizontal = 32.dp, vertical = 24.dp)
                         ) {
                             Text(
                                 text = story.content,
                                 color = nc.textPrimary,
-                                fontSize = 24.sp,
+                                fontSize = 22.sp,
                                 textAlign = TextAlign.Center,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Medium,
+                                lineHeight = 28.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        // Avatar below note (Messenger-style)
+                        if (user.avatarUrl.isNotEmpty()) {
+                            AsyncImage(
+                                model = user.avatarUrl,
+                                contentDescription = null,
+                                modifier = Modifier.size(56.dp).clip(CircleShape),
+                                contentScale = ContentScale.Crop
                             )
                         }
                     }
@@ -365,7 +372,7 @@ fun ViewNoteDialog(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Visibility, contentDescription = "Views", tint = Color.Gray, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("0 người đã xem", color = Color.Gray)
+                            Text("${story.viewedBy.size} người đã xem", color = Color.Gray)
                         }
                         IconButton(onClick = { onDelete?.invoke() }) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete", tint = nc.errorText)
@@ -393,7 +400,7 @@ fun ViewNoteDialog(
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         IconButton(
-                            onClick = { 
+                            onClick = {
                                 if (replyText.isNotBlank()) {
                                     onDismiss()
                                 }
@@ -402,6 +409,241 @@ fun ViewNoteDialog(
                         ) {
                             Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Gửi", tint = Color.White)
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ViewStoryDialog(
+    stories: List<com.example.nexus.data.model.Story>,
+    user: User,
+    isMyStory: Boolean = false,
+    onDelete: ((String) -> Unit)? = null,
+    onStoryViewed: ((String) -> Unit)? = null,
+    onDismiss: () -> Unit
+) {
+    val nc = MaterialTheme.nexusColors
+    var currentIndex by remember { mutableIntStateOf(0) }
+    val story = stories.getOrNull(currentIndex) ?: return
+
+    // Mark story as viewed
+    LaunchedEffect(story.id) {
+        if (!isMyStory) onStoryViewed?.invoke(story.id)
+    }
+
+    // Auto-advance timer (5 seconds per story)
+    LaunchedEffect(currentIndex) {
+        kotlinx.coroutines.delay(5000)
+        if (currentIndex < stories.size - 1) {
+            currentIndex++
+        } else {
+            onDismiss()
+        }
+    }
+
+    val timeAgo = remember(story.createdAt) {
+        val diff = System.currentTimeMillis() - (story.createdAt?.toDate()?.time ?: 0L)
+        val mins = diff / 60000
+        when {
+            mins < 1 -> "Vừa xong"
+            mins < 60 -> "${mins}p trước"
+            mins < 1440 -> "${mins / 60}h trước"
+            else -> "${mins / 1440} ngày trước"
+        }
+    }
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+        ) {
+            // Story image full screen
+            if (story.content.isNotEmpty()) {
+                AsyncImage(
+                    model = story.content,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit
+                )
+            }
+
+            // Tap zones for prev/next
+            Box(modifier = Modifier.fillMaxSize()) {
+                // Left tap zone - previous
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(0.3f)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {
+                                if (currentIndex > 0) currentIndex--
+                            }
+                        )
+                )
+                // Right tap zone - next
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(0.3f)
+                        .align(Alignment.TopEnd)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {
+                                if (currentIndex < stories.size - 1) currentIndex++
+                                else onDismiss()
+                            }
+                        )
+                )
+            }
+
+            // Gradient overlay top
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(120.dp)
+                    .background(
+                        androidx.compose.ui.graphics.Brush.verticalGradient(
+                            listOf(Color.Black.copy(alpha = 0.7f), Color.Transparent)
+                        )
+                    )
+            )
+
+            // Top header with progress bars
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp)
+            ) {
+                // Segmented progress bars
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    for (i in stories.indices) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(
+                                    when {
+                                        i < currentIndex -> Color.White
+                                        i == currentIndex -> Color.White
+                                        else -> Color.White.copy(alpha = 0.3f)
+                                    }
+                                )
+                        ) {
+                            if (i == currentIndex) {
+                                // Animated progress for current story
+                                val progress = remember { androidx.compose.animation.core.Animatable(0f) }
+                                LaunchedEffect(story.id) {
+                                    progress.snapTo(0f)
+                                    progress.animateTo(
+                                        targetValue = 1f,
+                                        animationSpec = androidx.compose.animation.core.tween(
+                                            durationMillis = 5000,
+                                            easing = androidx.compose.animation.core.LinearEasing
+                                        )
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxHeight()
+                                        .fillMaxWidth(progress.value)
+                                        .clip(RoundedCornerShape(2.dp))
+                                        .background(Color.White)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // User info
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (user.avatarUrl.isNotEmpty()) {
+                            AsyncImage(
+                                model = user.avatarUrl,
+                                contentDescription = null,
+                                modifier = Modifier.size(36.dp).clip(CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Box(modifier = Modifier.size(36.dp).clip(CircleShape).background(nc.avatarBg), contentAlignment = Alignment.Center) {
+                                Text(user.displayName.ifEmpty { user.username }.firstOrNull()?.uppercaseChar()?.toString() ?: "?", color = nc.textPrimary, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(user.displayName.ifEmpty { user.username }, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text(timeAgo, color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
+                        }
+                    }
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(24.dp))
+                    }
+                }
+            }
+
+            // Caption overlay bottom
+            if (!story.caption.isNullOrBlank()) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(
+                            androidx.compose.ui.graphics.Brush.verticalGradient(
+                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f))
+                            )
+                        )
+                        .padding(horizontal = 24.dp, vertical = 32.dp)
+                ) {
+                    Text(
+                        text = story.caption,
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Medium,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+
+            // Bottom actions
+            if (isMyStory) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(Color.Black.copy(alpha = 0.5f))
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Visibility, contentDescription = "Views", tint = Color.White, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("${story.viewedBy.size} người đã xem", color = Color.White)
+                    }
+                    IconButton(onClick = { onDelete?.invoke(story.id) }) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = nc.errorText)
                     }
                 }
             }
@@ -532,6 +774,10 @@ fun ChatListScreen(
     var viewingStoryUser by remember { mutableStateOf<User?>(null) }
     var viewingMyStory by remember { mutableStateOf(false) }
     val storiesState = viewModel?.stories?.collectAsState()?.value ?: emptyMap()
+    val notesState = viewModel?.notes?.collectAsState()?.value ?: emptyMap()
+    val imageStoriesState = viewModel?.imageStories?.collectAsState()?.value ?: emptyMap()
+    var viewingNoteUser by remember { mutableStateOf<User?>(null) }
+    var viewingMyNote by remember { mutableStateOf(false) }
 
     Scaffold(
 //        floatingActionButton = {
@@ -564,36 +810,75 @@ fun ChatListScreen(
             )
         }
         
+        // View friend's IMAGE STORY (avatar tap)
         if (viewingStoryUser != null) {
             val user = viewingStoryUser!!
-            val story = storiesState[user.uid]
-            if (story != null) {
-                ViewNoteDialog(
-                    story = story,
+            val storyList = imageStoriesState[user.uid]
+            if (!storyList.isNullOrEmpty()) {
+                ViewStoryDialog(
+                    stories = storyList,
                     user = user,
                     isMyStory = false,
+                    onStoryViewed = { storyId -> viewModel?.markStoryAsViewed(storyId) },
                     onDismiss = { viewingStoryUser = null }
                 )
             } else {
                 viewingStoryUser = null
             }
         }
-        
+
+        // View MY IMAGE STORY (avatar tap)
         if (viewingMyStory && currentUserState != null) {
-            val myStory = currentUserId?.let { storiesState[it] }
-            if (myStory != null) {
-                ViewNoteDialog(
-                    story = myStory,
+            val myStories = currentUserId?.let { imageStoriesState[it] }
+            if (!myStories.isNullOrEmpty()) {
+                ViewStoryDialog(
+                    stories = myStories,
                     user = currentUserState,
                     isMyStory = true,
-                    onDelete = {
-                        viewModel?.deleteStory(myStory.id)
+                    onDelete = { storyId ->
+                        viewModel?.deleteStory(storyId)
                         viewingMyStory = false
                     },
                     onDismiss = { viewingMyStory = false }
                 )
             } else {
                 viewingMyStory = false
+            }
+        }
+
+        // View friend's NOTE (bubble tap)
+        if (viewingNoteUser != null) {
+            val user = viewingNoteUser!!
+            val note = notesState[user.uid]
+            if (note != null) {
+                ViewNoteDialog(
+                    story = note,
+                    user = user,
+                    isMyStory = false,
+                    onNoteViewed = { viewModel?.markStoryAsViewed(note.id) },
+                    onDismiss = { viewingNoteUser = null }
+                )
+            } else {
+                viewingNoteUser = null
+            }
+        }
+
+        // View MY NOTE (bubble tap)
+        if (viewingMyNote && currentUserState != null) {
+            val myNote = currentUserId?.let { notesState[it] }
+            if (myNote != null) {
+                ViewNoteDialog(
+                    story = myNote,
+                    user = currentUserState,
+                    isMyStory = true,
+                    onDelete = {
+                        viewModel?.deleteStory(myNote.id)
+                        viewingMyNote = false
+                    },
+                    onDismiss = { viewingMyNote = false }
+                )
+            } else {
+                viewingMyNote = false
             }
         }
         
@@ -687,18 +972,20 @@ fun ChatListScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     item {
-                        val myStory = currentUserId?.let { storiesState[it] }
+                        val myNote = currentUserId?.let { notesState[it] }
+                        val myImageStory = currentUserId?.let { imageStoriesState[it]?.firstOrNull() }
                         MeStoryItem(
                             user = currentUserState,
-                            story = myStory,
+                            note = myNote,
+                            imageStory = myImageStory,
                             onPlusClick = onNavigateToCamera,
-                            onBubbleClick = { showCreateNoteDialog = true },
+                            onBubbleClick = {
+                                if (myNote != null) viewingMyNote = true
+                                else showCreateNoteDialog = true
+                            },
                             onAvatarClick = {
-                                if (myStory != null) {
-                                    viewingMyStory = true
-                                } else {
-                                    showCreateNoteDialog = true
-                                }
+                                if (myImageStory != null) viewingMyStory = true
+                                else onNavigateToCamera()
                             }
                         )
                     }
@@ -706,8 +993,11 @@ fun ChatListScreen(
                     items(onlineFriendsState.size) { index ->
                         val friend = onlineFriendsState[index]
                         val name = friend.displayName.ifEmpty { friend.username }
-                        val hasNote = storiesState[friend.uid] != null
-                        
+                        val friendNote = notesState[friend.uid]
+                        val friendImageStory = imageStoriesState[friend.uid]
+                        val hasNote = friendNote != null
+                        val hasStory = friendImageStory != null
+
                         val compactTime = if (friend.status != com.example.nexus.core.utils.Constants.USER_STATUS_ONLINE) {
                             val lastSeen = friend.lastSeen?.toDate()?.time ?: 0L
                             if (lastSeen > 0L) {
@@ -723,18 +1013,26 @@ fun ChatListScreen(
                         } else null
 
                         OnlineFriendItem(
-                            name = name, 
+                            name = name,
                             avatarUrl = friend.avatarUrl.ifEmpty { null },
                             hasNote = hasNote,
+                            hasStory = hasStory,
+                            noteText = friendNote?.content,
                             lastActive = compactTime,
-                            onClick = { 
-                                if (hasNote) {
-                                    viewingStoryUser = friend 
-                                } else {
+                            onAvatarClick = {
+                                if (hasStory) viewingStoryUser = friend
+                                else {
                                     val directChat = (chatsState as? Resource.Success)?.data?.find { it.type == com.example.nexus.core.utils.Constants.CHAT_TYPE_DIRECT && it.participants.contains(friend.uid) }
-                                    if (directChat != null) {
-                                        onNavigateToConversation(directChat.id)
-                                    }
+                                    if (directChat != null) onNavigateToConversation(directChat.id)
+                                }
+                            },
+                            onBubbleClick = {
+                                if (hasNote) viewingNoteUser = friend
+                            },
+                            onClick = {
+                                val directChat = (chatsState as? Resource.Success)?.data?.find { it.type == com.example.nexus.core.utils.Constants.CHAT_TYPE_DIRECT && it.participants.contains(friend.uid) }
+                                if (directChat != null) {
+                                    onNavigateToConversation(directChat.id)
                                 }
                             }
                         )
@@ -879,14 +1177,16 @@ fun ChatListScreen(
 @Composable
 fun MeStoryItem(
     user: User?,
-    story: com.example.nexus.data.model.Story?,
+    note: com.example.nexus.data.model.Story?,
+    imageStory: com.example.nexus.data.model.Story?,
     onPlusClick: () -> Unit,
     onBubbleClick: () -> Unit,
     onAvatarClick: () -> Unit
 ) {
     val nc = MaterialTheme.nexusColors
-    val hasNote = story != null
-    val bubbleText = story?.content?.takeIf { it.isNotBlank() && story.type != "image" } ?: "Chia sẻ ghi chú"
+    val hasNote = note != null
+    val hasStory = imageStory != null
+    val bubbleText = note?.content?.takeIf { it.isNotBlank() } ?: "Chia sẻ ghi chú"
 
     Box(
         modifier = Modifier.width(72.dp),
@@ -899,9 +1199,15 @@ fun MeStoryItem(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(if (hasNote) 2.dp else 4.dp)
+                    .padding(if (hasStory) 2.dp else 4.dp)
                     .then(
-                        if (hasNote) Modifier.border(
+                        if (hasStory) Modifier.border(
+                            width = 2.5.dp,
+                            brush = androidx.compose.ui.graphics.Brush.linearGradient(
+                                listOf(Color(0xFF00FF87), Color(0xFF60EFFF))
+                            ),
+                            shape = CircleShape
+                        ) else if (hasNote) Modifier.border(
                             width = 2.5.dp,
                             brush = androidx.compose.ui.graphics.Brush.linearGradient(
                                 listOf(Color(0xFF00C6FF), Color(0xFF0072FF))
@@ -909,7 +1215,7 @@ fun MeStoryItem(
                             shape = CircleShape
                         ) else Modifier
                     )
-                    .padding(if (hasNote) 3.dp else 0.dp)
+                    .padding(if (hasStory || hasNote) 3.dp else 0.dp)
                     .clip(CircleShape)
                     .background(nc.avatarBg)
                     .clickable(
@@ -931,7 +1237,7 @@ fun MeStoryItem(
                     Text(initial, color = nc.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 }
             }
-            
+
             // Nút + (To hơn)
             Box(
                 modifier = Modifier
@@ -954,8 +1260,8 @@ fun MeStoryItem(
                     val placeable = measurable.measure(androidx.compose.ui.unit.Constraints())
                     layout(0, 0) {
                         placeable.placeRelative(
-                            x = -placeable.width / 2 - 12.dp.roundToPx(), // Shift slightly left to look natural
-                            y = -placeable.height / 2  // Đè hẳn xuống giữa phần mép trên của Avatar
+                            x = -placeable.width / 2 - 12.dp.roundToPx(),
+                            y = -placeable.height / 2
                         )
                     }
                 }
@@ -968,15 +1274,15 @@ fun MeStoryItem(
         ) {
             Box(
                 modifier = Modifier
-                    .widthIn(max = 68.dp) // Không dài hơn đường kính avatar
+                    .widthIn(max = 68.dp)
                     .background(nc.surfaceVariant, RoundedCornerShape(12.dp))
-                    .padding(horizontal = 6.dp, vertical = 3.dp) // Giảm khoảng đệm
+                    .padding(horizontal = 6.dp, vertical = 3.dp)
             ) {
                 Text(
                     text = bubbleText,
                     color = nc.textPrimary,
                     fontSize = 10.sp,
-                    maxLines = 1, // Trên 1 dòng
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
@@ -986,21 +1292,21 @@ fun MeStoryItem(
 
 @Composable
 fun OnlineFriendItem(
-    name: String, 
+    name: String,
     avatarUrl: String? = null,
     isMe: Boolean = false,
     hasNote: Boolean = false,
+    hasStory: Boolean = false,
+    noteText: String? = null,
     lastActive: String? = null,
+    onAvatarClick: () -> Unit = {},
+    onBubbleClick: () -> Unit = {},
     onClick: () -> Unit = {}
 ) {
     val nc = MaterialTheme.nexusColors
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.width(72.dp).clickable(
-            interactionSource = remember { MutableInteractionSource() },
-            indication = null,
-            onClick = onClick
-        )
+        modifier = Modifier.width(72.dp)
     ) {
         Box(
             modifier = Modifier.size(68.dp)
@@ -1008,9 +1314,15 @@ fun OnlineFriendItem(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(if (hasNote) 2.dp else 4.dp)
+                    .padding(if (hasStory || hasNote) 2.dp else 4.dp)
                     .then(
-                        if (hasNote) Modifier.border(
+                        if (hasStory) Modifier.border(
+                            width = 2.5.dp,
+                            brush = androidx.compose.ui.graphics.Brush.linearGradient(
+                                listOf(Color(0xFF00FF87), Color(0xFF60EFFF))
+                            ),
+                            shape = CircleShape
+                        ) else if (hasNote) Modifier.border(
                             width = 2.5.dp,
                             brush = androidx.compose.ui.graphics.Brush.linearGradient(
                                 listOf(Color(0xFF00C6FF), Color(0xFF0072FF))
@@ -1018,9 +1330,18 @@ fun OnlineFriendItem(
                             shape = CircleShape
                         ) else Modifier
                     )
-                    .padding(if (hasNote) 3.dp else 0.dp)
+                    .padding(if (hasStory || hasNote) 3.dp else 0.dp)
                     .clip(CircleShape)
-                    .background(nc.avatarBg),
+                    .background(nc.avatarBg)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {
+                            if (hasStory) onAvatarClick()
+                            else if (hasNote) onBubbleClick()
+                            else onClick()
+                        }
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 if (!avatarUrl.isNullOrEmpty()) {
@@ -1035,7 +1356,7 @@ fun OnlineFriendItem(
                     Text(initial, color = nc.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 }
             }
-            
+
             if (isMe) {
                 Box(
                     modifier = Modifier
@@ -1073,26 +1394,39 @@ fun OnlineFriendItem(
                     }
                 }
 
-                if (hasNote) {
-                    // Note indicator bubble
+                if (hasNote && !noteText.isNullOrBlank()) {
+                    // Note indicator bubble with actual text - clickable
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .offset(x = 4.dp, y = (-2).dp)
+                            .widthIn(max = 68.dp)
                             .background(nc.surfaceVariant, RoundedCornerShape(12.dp))
                             .border(2.dp, nc.background, RoundedCornerShape(12.dp))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = onBubbleClick
+                            )
                     ) {
-                        Text("...", color = nc.textPrimary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = noteText,
+                            color = nc.textPrimary,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
             }
         }
         Spacer(modifier = Modifier.height(6.dp))
         Text(
-            text = name, 
-            color = nc.textPrimary, 
-            fontSize = 12.sp, 
+            text = name,
+            color = nc.textPrimary,
+            fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis

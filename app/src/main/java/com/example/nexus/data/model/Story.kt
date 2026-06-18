@@ -9,5 +9,6 @@ data class Story(
     val type: String = "text",
     val caption: String? = null,
     val createdAt: Timestamp? = null,
-    val expiresAt: Timestamp? = null
+    val expiresAt: Timestamp? = null,
+    val viewedBy: List<String> = emptyList()
 )
