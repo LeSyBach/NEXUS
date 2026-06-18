@@ -231,15 +231,17 @@ fun ArchiveScreen(
                                 val lastMessageText = chat.lastMessage?.text ?: "Chưa có tin nhắn"
                                 val timeStr = chat.lastMessage?.timestamp?.toDate()?.let { DateUtils.formatChatTime(it.time) } ?: ""
                                 var displayName by remember { mutableStateOf(chat.groupName.ifEmpty { "..." }) }
+                                var avatarUrl by remember { mutableStateOf<String?>(null) }
                                 LaunchedEffect(chat.id) {
                                     displayName = viewModel?.resolveDisplayName(chat) ?: chat.groupName
+                                    avatarUrl = viewModel?.resolveAvatarUrl(chat)
                                 }
                                 val myId = viewModel?.currentUserId
                                 val unreadCount = if (myId != null) (chat.lastMessage?.unreadCount?.get(myId) ?: 0L).toInt() else 0
 
                                 ChatItem(
                                     name = displayName,
-                                    avatarUrl = viewModel?.resolveAvatarUrl(chat),
+                                    avatarUrl = avatarUrl,
                                     lastMessage = lastMessageText,
                                     time = timeStr,
                                     unreadCount = unreadCount,
@@ -1161,8 +1163,10 @@ fun ChatListScreen(
                     val timeStr = chat.lastMessage?.timestamp?.toDate()?.let { DateUtils.formatChatTime(it.time) } ?: ""
 
                     var displayName by remember { mutableStateOf(chat.groupName.ifEmpty { "..." }) }
+                    var avatarUrl by remember { mutableStateOf<String?>(null) }
                     LaunchedEffect(chat.id) {
                         displayName = viewModel?.resolveDisplayName(chat) ?: chat.groupName
+                        avatarUrl = viewModel?.resolveAvatarUrl(chat)
                     }
 
                     val myId = viewModel?.currentUserId
@@ -1170,7 +1174,7 @@ fun ChatListScreen(
 
                     ChatItem(
                         name = displayName,
-                        avatarUrl = viewModel?.resolveAvatarUrl(chat),
+                        avatarUrl = avatarUrl,
                         lastMessage = lastMessageText,
                         time = timeStr,
                         unreadCount = unreadCount,
@@ -5273,8 +5277,10 @@ fun ForwardMessageBottomSheet(
                         items(chats.size) { index ->
                             val chat = chats[index]
                             var displayName by remember { mutableStateOf(chat.groupName.ifEmpty { "..." }) }
+                            var avatarUrl by remember { mutableStateOf<String?>(null) }
                             LaunchedEffect(chat.id) {
                                 displayName = viewModel?.resolveDisplayName(chat) ?: chat.groupName
+                                avatarUrl = viewModel?.resolveAvatarUrl(chat)
                             }
 
                             Row(
@@ -5292,7 +5298,6 @@ fun ForwardMessageBottomSheet(
                                         .background(nc.avatarBg),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    val avatarUrl = viewModel?.resolveAvatarUrl(chat)
                                     if (!avatarUrl.isNullOrEmpty()) {
                                         AsyncImage(
                                             model = avatarUrl,

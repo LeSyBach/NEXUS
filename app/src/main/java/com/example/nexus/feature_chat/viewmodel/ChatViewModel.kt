@@ -545,11 +545,26 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    fun resolveAvatarUrl(chat: Chat): String? {
+    suspend fun resolveAvatarUrl(chat: Chat): String? {
         if (chat.type == "group") return chat.groupAvatarUrl.ifEmpty { null }
         val myId = currentUserId ?: return null
         val otherId = chat.participants.firstOrNull { it != myId } ?: return null
-        return userCache[otherId]?.avatarUrl?.ifEmpty { null }
+
+        // Check cache first
+        userCache[otherId]?.avatarUrl?.ifEmpty { null }?.let { return it }
+
+        // Fetch from Firestore if not in cache
+        return try {
+            val user = chatRepository.getUserById(otherId)
+            if (user != null) {
+                userCache[otherId] = user
+                user.avatarUrl.ifEmpty { null }
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
     }
 
     fun isUserOnline(chat: Chat): Boolean {

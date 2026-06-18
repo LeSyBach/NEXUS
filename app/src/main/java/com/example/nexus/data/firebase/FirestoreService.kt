@@ -37,11 +37,16 @@ class FirestoreService @Inject constructor(
     }
 
     suspend fun getUser(userId: String): User? {
-        return firestore.collection(Constants.COLLECTION_USERS)
-            .document(userId)
-            .get()
-            .await()
-            .toObject(User::class.java)
+        return try {
+            firestore.collection(Constants.COLLECTION_USERS)
+                .document(userId)
+                .get()
+                .await()
+                .toObject(User::class.java)
+        } catch (e: Exception) {
+            Log.w("FirestoreService", "getUser error for $userId", e)
+            null
+        }
     }
 
     fun observeUser(userId: String): Flow<User?> = callbackFlow {
@@ -132,7 +137,8 @@ class FirestoreService @Inject constructor(
             .whereArrayContains("participants", userId)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    close(error)
+                    Log.w("FirestoreService", "observeChatsForUser error", error)
+                    trySend(emptyList())
                     return@addSnapshotListener
                 }
                 val chats = snapshot?.toObjects(Chat::class.java)
