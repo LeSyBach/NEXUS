@@ -671,4 +671,34 @@ class ChatRepository @Inject constructor(
     suspend fun unpinMessage(chatId: String) {
         firestoreService.unpinMessage(chatId)
     }
+
+    // ══════════════════════════════════════════════════════════════
+    // STORY / NOTE OPERATIONS
+    // ══════════════════════════════════════════════════════════════
+
+    suspend fun createStory(content: String, type: String = "text", caption: String? = null): Resource<String> {
+        return try {
+            val userId = authService.currentUserId ?: return Resource.Error("User not logged in")
+            val story = com.example.nexus.data.model.Story(
+                userId = userId,
+                content = content,
+                type = type,
+                caption = caption,
+                createdAt = Timestamp.now(),
+                expiresAt = Timestamp(java.util.Date(System.currentTimeMillis() + 24 * 60 * 60 * 1000))
+            )
+            val id = firestoreService.createStory(story)
+            Resource.Success(id)
+        } catch (e: Exception) {
+            Resource.Error(e.message ?: "Failed to post story")
+        }
+    }
+
+    fun observeAllActiveStories(): Flow<List<com.example.nexus.data.model.Story>> {
+        return firestoreService.observeAllActiveStories()
+    }
+
+    suspend fun deleteStory(storyId: String) {
+        firestoreService.deleteStory(storyId)
+    }
 }

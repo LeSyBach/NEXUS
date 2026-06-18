@@ -41,6 +41,7 @@ sealed class Screen(
             else "conversation/${Uri.encode(chatId)}?action=$action"
     }
     data object CreateGroup : Screen("create_group", "Tạo nhóm")
+    data object LocketCamera : Screen("locket_camera", "Ảnh tức thì")
     data object GroupInfo : Screen("group_info/{groupId}", "Thông tin nhóm") {
         fun createRoute(groupId: String) = "group_info/$groupId"
     }

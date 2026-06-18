@@ -959,4 +959,35 @@ class FirestoreService @Inject constructor(
             .update(updates)
             .await()
     }
+
+    // ══════════════════════════════════════════════════════════════
+    // STORY / NOTE OPERATIONS
+    // ══════════════════════════════════════════════════════════════
+
+    suspend fun createStory(story: com.example.nexus.data.model.Story): String {
+        val docRef = firestore.collection("stories").add(story).await()
+        return docRef.id
+    }
+
+    fun observeAllActiveStories(): Flow<List<com.example.nexus.data.model.Story>> = callbackFlow {
+        val listener = firestore.collection("stories")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    close(error)
+                    return@addSnapshotListener
+                }
+                val now = System.currentTimeMillis()
+                val stories = snapshot?.documents?.mapNotNull { doc ->
+                    val story = doc.toObject(com.example.nexus.data.model.Story::class.java)?.copy(id = doc.id)
+                    val expiresAt = story?.expiresAt?.toDate()?.time ?: 0L
+                    if (expiresAt > now) story else null
+                } ?: emptyList()
+                trySend(stories)
+            }
+        awaitClose { listener.remove() }
+    }
+
+    suspend fun deleteStory(storyId: String) {
+        firestore.collection("stories").document(storyId).delete().await()
+    }
 }

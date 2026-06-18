@@ -91,6 +91,12 @@ class ChatViewModel @Inject constructor(
     private val _onlineFriends = MutableStateFlow<List<User>>(emptyList())
     val onlineFriends: StateFlow<List<User>> = _onlineFriends
 
+    private val _currentUser = MutableStateFlow<User?>(null)
+    val currentUser: StateFlow<User?> = _currentUser
+
+    private val _stories = MutableStateFlow<Map<String, com.example.nexus.data.model.Story>>(emptyMap())
+    val stories: StateFlow<Map<String, com.example.nexus.data.model.Story>> = _stories
+
     private val _isTyping = MutableStateFlow(false)
     val isTyping: StateFlow<Boolean> = _isTyping
 
@@ -209,6 +215,59 @@ class ChatViewModel @Inject constructor(
 
     init {
         loadChats()
+        loadStories()
+        currentUserId?.let { uid ->
+            viewModelScope.launch {
+                chatRepository.observeUser(uid).collect { _currentUser.value = it }
+            }
+        }
+    }
+
+    private fun loadStories() {
+        viewModelScope.launch {
+            chatRepository.observeAllActiveStories().collect { storyList ->
+                val storyMap = mutableMapOf<String, com.example.nexus.data.model.Story>()
+                for (story in storyList) {
+                    val existing = storyMap[story.userId]
+                    if (existing == null || (story.createdAt?.toDate()?.time ?: 0) > (existing.createdAt?.toDate()?.time ?: 0)) {
+                        storyMap[story.userId] = story
+                    }
+                }
+                _stories.value = storyMap
+            }
+        }
+    }
+
+    fun postStory(content: String, type: String = "text") {
+        viewModelScope.launch {
+            chatRepository.createStory(content, type)
+        }
+    }
+
+    fun deleteStory(storyId: String) {
+        viewModelScope.launch {
+            chatRepository.deleteStory(storyId)
+        }
+    }
+
+    fun uploadAndPostStory(context: android.content.Context, uri: android.net.Uri, caption: String? = null) {
+        viewModelScope.launch {
+            _uploadState.value = UploadState.Uploading()
+            try {
+                val imageUrl = mediaUploader.upload(context, uri)
+                if (imageUrl != null) {
+                    chatRepository.createStory(imageUrl, "image", caption)
+                    _uploadState.value = UploadState.Success
+                } else {
+                    _uploadState.value = UploadState.Error("Upload failed")
+                }
+            } catch (e: Exception) {
+                _uploadState.value = UploadState.Error(e.message ?: "Unknown error")
+            } finally {
+                kotlinx.coroutines.delay(2000)
+                _uploadState.value = UploadState.Idle
+            }
+        }
     }
 
     private fun loadChats() {
@@ -273,10 +332,15 @@ class ChatViewModel @Inject constructor(
 
     private fun refreshOnlineFriends() {
         val myId = currentUserId ?: return
-        val online = userCache.values.filter {
-            it.status == Constants.USER_STATUS_ONLINE && it.uid != myId
-        }
-        _onlineFriends.value = online
+        val now = System.currentTimeMillis()
+        val recentFriends = userCache.values.filter { user ->
+            if (user.uid == myId) return@filter false
+            if (user.status == Constants.USER_STATUS_ONLINE) return@filter true
+            val lastSeen = user.lastSeen?.toDate()?.time ?: 0L
+            val hoursSinceLastSeen = (now - lastSeen) / (1000 * 60 * 60)
+            hoursSinceLastSeen < 24
+        }.sortedByDescending { it.lastSeen }
+        _onlineFriends.value = recentFriends
     }
 
     fun loadMessages(chatId: String) {

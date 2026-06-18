@@ -78,6 +78,7 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.LibraryAdd
@@ -94,8 +95,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -258,6 +261,255 @@ fun ArchiveScreen(
     }
 }
 
+@Composable
+fun ViewNoteDialog(
+    story: com.example.nexus.data.model.Story,
+    user: User,
+    isMyStory: Boolean = false,
+    onDelete: (() -> Unit)? = null,
+    onDismiss: () -> Unit
+) {
+    val nc = MaterialTheme.nexusColors
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.95f))
+                .padding(vertical = 48.dp, horizontal = 16.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                // Top Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (user.avatarUrl.isNotEmpty()) {
+                            AsyncImage(
+                                model = user.avatarUrl,
+                                contentDescription = null,
+                                modifier = Modifier.size(40.dp).clip(CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Box(modifier = Modifier.size(40.dp).clip(CircleShape).background(nc.avatarBg), contentAlignment = Alignment.Center) {
+                                Text(user.displayName.ifEmpty { user.username }.firstOrNull()?.uppercaseChar()?.toString() ?: "?", color = nc.textPrimary, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(if (isMyStory) "Tin của bạn" else user.displayName.ifEmpty { user.username }, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Content
+                Box(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (story.type == "image") {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .fillMaxHeight(0.8f)
+                                .align(Alignment.Center)
+                                .clip(RoundedCornerShape(24.dp))
+                        ) {
+                            AsyncImage(
+                                model = story.content,
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                            if (!story.caption.isNullOrBlank()) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(bottom = 5.dp)
+                                        .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Text(story.caption, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                                }
+                            }
+                        }
+                    } else {
+                        Box(
+                            modifier = Modifier.background(nc.surfaceVariant, RoundedCornerShape(24.dp)).padding(32.dp)
+                        ) {
+                            Text(
+                                text = story.content,
+                                color = nc.textPrimary,
+                                fontSize = 24.sp,
+                                textAlign = TextAlign.Center,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Bottom Action
+                if (isMyStory) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Visibility, contentDescription = "Views", tint = Color.Gray, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("0 người đã xem", color = Color.Gray)
+                        }
+                        IconButton(onClick = { onDelete?.invoke() }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = nc.errorText)
+                        }
+                    }
+                } else {
+                    var replyText by remember { mutableStateOf("") }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = replyText,
+                            onValueChange = { replyText = it },
+                            placeholder = { Text("Trả lời ghi chú...", color = Color.Gray) },
+                            modifier = Modifier.weight(1f),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color.White,
+                                unfocusedBorderColor = Color.DarkGray,
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(24.dp),
+                            singleLine = true
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        IconButton(
+                            onClick = { 
+                                if (replyText.isNotBlank()) {
+                                    onDismiss()
+                                }
+                            },
+                            modifier = Modifier.background(if (replyText.isNotBlank()) Color(0xFF00C6FF) else Color.DarkGray, CircleShape).size(48.dp)
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Gửi", tint = Color.White)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun CreateNoteDialog(
+    user: com.example.nexus.data.model.User?,
+    onDismiss: () -> Unit,
+    onPostNote: (String, String?) -> Unit
+) {
+    val nc = MaterialTheme.nexusColors
+    var noteText by remember { mutableStateOf("") }
+    
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.95f))
+                .padding(top = 48.dp, start = 16.dp, end = 16.dp, bottom = 16.dp)
+        ) {
+            // Top Bar
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                }
+                Text("Ghi chú mới", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                
+                Button(
+                    onClick = { onPostNote(noteText, null) },
+                    enabled = noteText.isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF333333),
+                        contentColor = Color.White,
+                        disabledContainerColor = Color(0xFF222222),
+                        disabledContentColor = Color.Gray
+                    ),
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    Text("Chia sẻ", fontWeight = FontWeight.Bold)
+                }
+            }
+
+            // Center Content
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .offset(y = (-40).dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Bubble input
+                Box(
+                    modifier = Modifier
+                        .background(Color(0xFF333333), RoundedCornerShape(24.dp))
+                        .padding(horizontal = 24.dp, vertical = 16.dp)
+                        .widthIn(min = 180.dp)
+                ) {
+                    androidx.compose.foundation.text.BasicTextField(
+                        value = noteText,
+                        onValueChange = { if (it.length <= 60) noteText = it },
+                        textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 18.sp),
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(Color(0xFF00C6FF)),
+                        decorationBox = { innerTextField ->
+                            if (noteText.isEmpty()) {
+                                Text("| Chia sẻ suy nghĩ...", color = Color.Gray, fontSize = 18.sp)
+                            } else {
+                                innerTextField()
+                            }
+                        }
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Avatar
+                Box(
+                    modifier = Modifier
+                        .size(100.dp)
+                        .clip(CircleShape)
+                        .background(nc.avatarBg),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (user != null && user.avatarUrl.isNotEmpty()) {
+                        AsyncImage(
+                            model = user.avatarUrl,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        val initial = user?.displayName?.ifEmpty { user.username }?.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
+                        Text(initial, color = nc.textPrimary, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatListScreen(
@@ -265,15 +517,22 @@ fun ChatListScreen(
     onNavigateToConversation: (String) -> Unit,
     onNavigateToCreateGroup: () -> Unit,
     onNavigateToSearch: () -> Unit,
+    onNavigateToCamera: () -> Unit = {},
     onNavigateToTab: (String) -> Unit = {}
 ) {
     val nc = MaterialTheme.nexusColors
     val chatsState = viewModel?.chatsState?.collectAsState()?.value ?: Resource.Idle
     val onlineFriendsState = viewModel?.onlineFriends?.collectAsState()?.value ?: emptyList()
     val currentUserId = viewModel?.currentUserId
+    val currentUserState = viewModel?.currentUser?.collectAsState()?.value
     var showAddMenu by remember { mutableStateOf(false) }
     val pinnedChatIds by viewModel?.pinnedChatIds?.collectAsState() ?: remember { mutableStateOf(emptySet()) }
     var showChatMenu by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var showCreateNoteDialog by remember { mutableStateOf(false) }
+    var viewingStoryUser by remember { mutableStateOf<User?>(null) }
+    var viewingMyStory by remember { mutableStateOf(false) }
+    val storiesState = viewModel?.stories?.collectAsState()?.value ?: emptyMap()
+
     Scaffold(
 //        floatingActionButton = {
 //            FloatingActionButton(
@@ -294,6 +553,50 @@ fun ChatListScreen(
         },
         containerColor = nc.background
     ) { paddingValues ->
+        if (showCreateNoteDialog) {
+            CreateNoteDialog(
+                user = currentUserState,
+                onDismiss = { showCreateNoteDialog = false },
+                onPostNote = { text, photoUrl ->
+                    viewModel?.postStory(content = photoUrl ?: text, type = if (photoUrl != null) "image" else "text")
+                    showCreateNoteDialog = false
+                }
+            )
+        }
+        
+        if (viewingStoryUser != null) {
+            val user = viewingStoryUser!!
+            val story = storiesState[user.uid]
+            if (story != null) {
+                ViewNoteDialog(
+                    story = story,
+                    user = user,
+                    isMyStory = false,
+                    onDismiss = { viewingStoryUser = null }
+                )
+            } else {
+                viewingStoryUser = null
+            }
+        }
+        
+        if (viewingMyStory && currentUserState != null) {
+            val myStory = currentUserId?.let { storiesState[it] }
+            if (myStory != null) {
+                ViewNoteDialog(
+                    story = myStory,
+                    user = currentUserState,
+                    isMyStory = true,
+                    onDelete = {
+                        viewModel?.deleteStory(myStory.id)
+                        viewingMyStory = false
+                    },
+                    onDismiss = { viewingMyStory = false }
+                )
+            } else {
+                viewingMyStory = false
+            }
+        }
+        
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -381,28 +684,60 @@ fun ChatListScreen(
                 
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     item {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Box(
-                                modifier = Modifier
-                                    .size(64.dp)
-                                    .border(1.dp, nc.outline, CircleShape)
-                                    .clickable { onNavigateToSearch() },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = "Add", tint = nc.textSecondary, modifier = Modifier.size(28.dp))
+                        val myStory = currentUserId?.let { storiesState[it] }
+                        MeStoryItem(
+                            user = currentUserState,
+                            story = myStory,
+                            onPlusClick = onNavigateToCamera,
+                            onBubbleClick = { showCreateNoteDialog = true },
+                            onAvatarClick = {
+                                if (myStory != null) {
+                                    viewingMyStory = true
+                                } else {
+                                    showCreateNoteDialog = true
+                                }
                             }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text("Mới", color = nc.textSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                        }
+                        )
                     }
 
                     items(onlineFriendsState.size) { index ->
                         val friend = onlineFriendsState[index]
                         val name = friend.displayName.ifEmpty { friend.username }
-                        OnlineFriendItem(name = name, avatarUrl = friend.avatarUrl.ifEmpty { null })
+                        val hasNote = storiesState[friend.uid] != null
+                        
+                        val compactTime = if (friend.status != com.example.nexus.core.utils.Constants.USER_STATUS_ONLINE) {
+                            val lastSeen = friend.lastSeen?.toDate()?.time ?: 0L
+                            if (lastSeen > 0L) {
+                                val diffMs = System.currentTimeMillis() - lastSeen
+                                val diffMins = diffMs / (60 * 1000)
+                                val diffHours = diffMins / 60
+                                when {
+                                    diffMins < 60 -> "${diffMins}p"
+                                    diffHours < 24 -> "${diffHours}h"
+                                    else -> ""
+                                }
+                            } else ""
+                        } else null
+
+                        OnlineFriendItem(
+                            name = name, 
+                            avatarUrl = friend.avatarUrl.ifEmpty { null },
+                            hasNote = hasNote,
+                            lastActive = compactTime,
+                            onClick = { 
+                                if (hasNote) {
+                                    viewingStoryUser = friend 
+                                } else {
+                                    val directChat = (chatsState as? Resource.Success)?.data?.find { it.type == com.example.nexus.core.utils.Constants.CHAT_TYPE_DIRECT && it.participants.contains(friend.uid) }
+                                    if (directChat != null) {
+                                        onNavigateToConversation(directChat.id)
+                                    }
+                                }
+                            }
+                        )
                     }
                 }
             }
@@ -542,22 +877,148 @@ fun ChatListScreen(
 }
 
 @Composable
-fun OnlineFriendItem(name: String, avatarUrl: String? = null) {
+fun MeStoryItem(
+    user: User?,
+    story: com.example.nexus.data.model.Story?,
+    onPlusClick: () -> Unit,
+    onBubbleClick: () -> Unit,
+    onAvatarClick: () -> Unit
+) {
     val nc = MaterialTheme.nexusColors
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    val hasNote = story != null
+    val bubbleText = story?.content?.takeIf { it.isNotBlank() && story.type != "image" } ?: "Chia sẻ ghi chú"
+
+    Box(
+        modifier = Modifier.width(72.dp),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        // Avatar
         Box(
-            modifier = Modifier.size(64.dp)
+            modifier = Modifier.size(68.dp)
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(2.dp)
-                    .border(
-                        width = 2.5.dp,
-                        brush = Brush.linearGradient(listOf(NexusPrimary, NexusSecondary)),
-                        shape = CircleShape
+                    .padding(if (hasNote) 2.dp else 4.dp)
+                    .then(
+                        if (hasNote) Modifier.border(
+                            width = 2.5.dp,
+                            brush = androidx.compose.ui.graphics.Brush.linearGradient(
+                                listOf(Color(0xFF00C6FF), Color(0xFF0072FF))
+                            ),
+                            shape = CircleShape
+                        ) else Modifier
                     )
-                    .padding(4.dp)
+                    .padding(if (hasNote) 3.dp else 0.dp)
+                    .clip(CircleShape)
+                    .background(nc.avatarBg)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onAvatarClick
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                if (user != null && user.avatarUrl.isNotEmpty()) {
+                    AsyncImage(
+                        model = user.avatarUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    val initial = user?.displayName?.ifEmpty { user.username }?.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
+                    Text(initial, color = nc.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            
+            // Nút + (To hơn)
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(nc.surfaceVariant)
+                    .border(2.dp, nc.background, CircleShape)
+                    .align(Alignment.BottomEnd)
+                    .clickable(onClick = onPlusClick),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Instant Camera", tint = nc.textPrimary, modifier = Modifier.size(20.dp))
+            }
+        }
+
+        // Bubble (Placed using layout to avoid affecting parent bounds)
+        Box(
+            modifier = Modifier
+                .layout { measurable, constraints ->
+                    val placeable = measurable.measure(androidx.compose.ui.unit.Constraints())
+                    layout(0, 0) {
+                        placeable.placeRelative(
+                            x = -placeable.width / 2 - 12.dp.roundToPx(), // Shift slightly left to look natural
+                            y = -placeable.height / 2  // Đè hẳn xuống giữa phần mép trên của Avatar
+                        )
+                    }
+                }
+                .zIndex(1f)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onBubbleClick
+                )
+        ) {
+            Box(
+                modifier = Modifier
+                    .widthIn(max = 68.dp) // Không dài hơn đường kính avatar
+                    .background(nc.surfaceVariant, RoundedCornerShape(12.dp))
+                    .padding(horizontal = 6.dp, vertical = 3.dp) // Giảm khoảng đệm
+            ) {
+                Text(
+                    text = bubbleText,
+                    color = nc.textPrimary,
+                    fontSize = 10.sp,
+                    maxLines = 1, // Trên 1 dòng
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun OnlineFriendItem(
+    name: String, 
+    avatarUrl: String? = null,
+    isMe: Boolean = false,
+    hasNote: Boolean = false,
+    lastActive: String? = null,
+    onClick: () -> Unit = {}
+) {
+    val nc = MaterialTheme.nexusColors
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.width(72.dp).clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            onClick = onClick
+        )
+    ) {
+        Box(
+            modifier = Modifier.size(68.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(if (hasNote) 2.dp else 4.dp)
+                    .then(
+                        if (hasNote) Modifier.border(
+                            width = 2.5.dp,
+                            brush = androidx.compose.ui.graphics.Brush.linearGradient(
+                                listOf(Color(0xFF00C6FF), Color(0xFF0072FF))
+                            ),
+                            shape = CircleShape
+                        ) else Modifier
+                    )
+                    .padding(if (hasNote) 3.dp else 0.dp)
                     .clip(CircleShape)
                     .background(nc.avatarBg),
                 contentAlignment = Alignment.Center
@@ -570,22 +1031,72 @@ fun OnlineFriendItem(name: String, avatarUrl: String? = null) {
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
-                    val initial = name.firstOrNull()?.toString() ?: "?"
+                    val initial = name.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
                     Text(initial, color = nc.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 }
             }
             
-            Box(
-                modifier = Modifier
-                    .size(16.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF22C55E))
-                    .border(2.dp, nc.background, CircleShape)
-                    .align(Alignment.BottomEnd)
-            )
+            if (isMe) {
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(nc.surfaceVariant)
+                        .border(2.dp, nc.background, CircleShape)
+                        .align(Alignment.BottomEnd),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Add Note", tint = nc.textPrimary, modifier = Modifier.size(16.dp))
+                }
+            } else {
+                if (lastActive == null) {
+                    // Online Green Dot
+                    Box(
+                        modifier = Modifier
+                            .size(16.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF22C55E))
+                            .border(2.dp, nc.background, CircleShape)
+                            .align(Alignment.BottomEnd)
+                    )
+                } else if (lastActive.isNotEmpty()) {
+                    // Offline but recently active (e.g., "5p")
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(nc.surfaceVariant)
+                            .border(2.dp, nc.background, RoundedCornerShape(8.dp))
+                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                    ) {
+                        Text(lastActive, color = nc.textSecondary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                if (hasNote) {
+                    // Note indicator bubble
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(x = 4.dp, y = (-2).dp)
+                            .background(nc.surfaceVariant, RoundedCornerShape(12.dp))
+                            .border(2.dp, nc.background, RoundedCornerShape(12.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text("...", color = nc.textPrimary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(name, color = nc.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = name, 
+            color = nc.textPrimary, 
+            fontSize = 12.sp, 
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -983,12 +1494,28 @@ fun ConversationScreen(
             .background(nc.background)
             .imePadding()
     ) {
+        // ── Pattern Background ──
+        androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+            val dotRadius = 2f
+            val spacing = 70f
+            val dotColor = nc.textSecondary.copy(alpha = 0.06f)
+            var x = 0f
+            while (x < size.width) {
+                var y = 0f
+                while (y < size.height) {
+                    drawCircle(color = dotColor, radius = dotRadius, center = androidx.compose.ui.geometry.Offset(x, y))
+                    y += spacing
+                }
+                x += spacing
+            }
+        }
+        
         Column(modifier = Modifier.fillMaxSize()) {
             // ── Top Bar ──
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(nc.background)
+                .background(nc.surface.copy(alpha = 0.85f))
                 .padding(horizontal = 4.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1999,11 +2526,10 @@ fun ConversationScreen(
                         modifier = Modifier
                             .size(24.dp)
                             .background(
-                                brush = Brush.linearGradient(
+                                brush = androidx.compose.ui.graphics.Brush.linearGradient(
                                     colors = listOf(
-                                        Color(0xFF4CAF50), // Xanh
-                                        Color(0xFF9C27B0), // Tím
-                                        Color(0xFFE91E63)  // Hồng
+                                        Color(0xFF00C6FF), // Cyan
+                                        Color(0xFF0072FF)  // Blue
                                     )
                                 ),
                                 shape = CircleShape
@@ -2020,7 +2546,7 @@ fun ConversationScreen(
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
                         "Tóm tắt đoạn chat",
-                        color = Color.White,
+                        color = nc.textPrimary,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium
                     )
@@ -2430,6 +2956,14 @@ fun MessageBubble(
 ) {
     val nc = MaterialTheme.nexusColors
     val avatarSize = 28
+    val sentBubbleBrush = remember(sentBubbleColor, nc.isLight) {
+        val targetColor = if (nc.isLight) Color.White else Color.Black
+        val argb1 = sentBubbleColor.toArgb()
+        val argb2 = androidx.core.graphics.ColorUtils.blendARGB(argb1, targetColor.toArgb(), 0.15f)
+        androidx.compose.ui.graphics.Brush.linearGradient(
+            colors = listOf(sentBubbleColor, Color(argb2))
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -2649,7 +3183,7 @@ fun MessageBubble(
                                             onLongClick = onLongClick
                                         )
                                         .clip(bubbleShape)
-                                        .background(color = if (isMe) sentBubbleColor else nc.receivedBubble, shape = bubbleShape)
+                                        .then(if (isMe) Modifier.background(sentBubbleBrush, bubbleShape) else Modifier.background(nc.receivedBubble, bubbleShape))
                                 ) {
                                     AsyncImage(
                                         model = text,
@@ -2984,7 +3518,7 @@ fun MessageBubble(
                                             onClick = {},
                                             onLongClick = onLongClick
                                         )
-                                        .background(color = if (isMe) sentBubbleColor else nc.receivedBubble, shape = bubbleShape)
+                                        .then(if (isMe) Modifier.background(sentBubbleBrush, bubbleShape) else Modifier.background(nc.receivedBubble, bubbleShape))
                                         .padding(horizontal = 12.dp, vertical = 10.dp)
                                 ) {
                                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -3133,7 +3667,7 @@ fun MessageBubble(
                                             },
                                             onLongClick = onLongClick
                                         )
-                                        .background(color = if (isMe) sentBubbleColor else nc.receivedBubble, shape = bubbleShape)
+                                        .then(if (isMe) Modifier.background(sentBubbleBrush, bubbleShape) else Modifier.background(nc.receivedBubble, bubbleShape))
                                         .padding(horizontal = 12.dp, vertical = 10.dp)
                                 ) {
                                     Row(
@@ -3229,7 +3763,7 @@ fun MessageBubble(
                                             onClick = { if (contactUserId.isNotEmpty()) onContactClick?.invoke(contactUserId) },
                                             onLongClick = onLongClick
                                         )
-                                        .background(color = if (isMe) sentBubbleColor else nc.receivedBubble, shape = bubbleShape)
+                                        .then(if (isMe) Modifier.background(sentBubbleBrush, bubbleShape) else Modifier.background(nc.receivedBubble, bubbleShape))
                                         .padding(12.dp)
                                 ) {
                                     Row(
@@ -3365,7 +3899,7 @@ fun MessageBubble(
                                                 onClick = {},
                                                 onLongClick = onLongClick
                                             )
-                                            .background(color = if (isMe) sentBubbleColor else nc.receivedBubble, shape = bubbleShape)
+                                            .then(if (isMe) Modifier.background(sentBubbleBrush, bubbleShape) else Modifier.background(nc.receivedBubble, bubbleShape))
                                             .padding(horizontal = 14.dp, vertical = 10.dp)
                                     ) {
                                         Text(
@@ -3416,7 +3950,7 @@ fun MessageBubble(
                                             onClick = {},
                                             onLongClick = onLongClick
                                         )
-                                        .background(color = if (isMe) sentBubbleColor else nc.receivedBubble, shape = bubbleShape)
+                                        .then(if (isMe) Modifier.background(sentBubbleBrush, bubbleShape) else Modifier.background(nc.receivedBubble, bubbleShape))
                                         .padding(horizontal = 14.dp, vertical = 10.dp)
                                 ) {
                                     Text(

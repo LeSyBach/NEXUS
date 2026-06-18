@@ -140,7 +140,18 @@ fun NexusNavGraph(
                 onNavigateToSearch = {
                     navController.navigate(Screen.SearchUser.route)
                 },
+                onNavigateToCamera = {
+                    navController.navigate(Screen.LocketCamera.route)
+                },
                 onNavigateToTab = onNavigateToTab
+            )
+        }
+
+        composable(Screen.LocketCamera.route) {
+            val chatViewModel: com.example.nexus.feature_chat.viewmodel.ChatViewModel = hiltViewModel()
+            com.example.nexus.feature_chat.ui.LocketCameraScreen(
+                viewModel = chatViewModel,
+                onNavigateBack = { navController.popBackStack() }
             )
         }
 

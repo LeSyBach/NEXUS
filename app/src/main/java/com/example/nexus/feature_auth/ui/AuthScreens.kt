@@ -189,9 +189,9 @@ fun LoginScreen(
                 .background(
                     Brush.verticalGradient(
                         colors = if (nc.isLight) {
-                            listOf(nc.background, Color(0xFFE0E7F1))
+                            listOf(nc.background, Color(0xFFE2E8F0)) // Slate 200
                         } else {
-                            listOf(nc.background, Color(0xFF1A1A2E))
+                            listOf(nc.background, Color(0xFF0F172A)) // Slate 900
                         }
                     )
                 ),
