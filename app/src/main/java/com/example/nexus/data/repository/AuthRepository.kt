@@ -35,12 +35,24 @@ class AuthRepository @Inject constructor(
     fun observeAuthState(): Flow<FirebaseUser?> = authService.observeAuthState()
 
     suspend fun login(email: String, password: String) {
-        authService.signInWithEmail(email, password)
+        try {
+            authService.signInWithEmail(email, password)
+        } catch (e: Exception) {
+            // Firebase Auth disabled account error
+            if (e.message?.contains("disabled", ignoreCase = true) == true) {
+                throw Exception("ACCOUNT_BANNED")
+            }
+            throw e
+        }
 
         val userId = authService.currentUserId
         if (userId != null) {
             // Check if account is pending deletion → auto reactivate
             val user = firestoreService.getUser(userId)
+            if (user?.isBanned == true) {
+                authService.signOut()
+                throw Exception("ACCOUNT_BANNED")
+            }
             if (user?.status == Constants.USER_STATUS_PENDING_DELETION) {
                 firestoreService.updateUser(userId, mapOf(
                     "status" to Constants.USER_STATUS_ACTIVE,
@@ -116,11 +128,22 @@ class AuthRepository @Inject constructor(
     }
 
     suspend fun loginWithGoogle(idToken: String) {
-        val firebaseUser = authService.signInWithGoogle(idToken)
+        val firebaseUser = try {
+            authService.signInWithGoogle(idToken)
+        } catch (e: Exception) {
+            if (e.message?.contains("disabled", ignoreCase = true) == true) {
+                throw Exception("ACCOUNT_BANNED")
+            }
+            throw e
+        }
         val userId = firebaseUser.uid
 
         // Check if user document exists (returning user) or needs to be created (new user)
         val existingUser = firestoreService.getUser(userId)
+        if (existingUser?.isBanned == true) {
+            authService.signOut()
+            throw Exception("ACCOUNT_BANNED")
+        }
         if (existingUser == null) {
             // New Google user — create Firestore document
             val displayName = firebaseUser.displayName ?: ""

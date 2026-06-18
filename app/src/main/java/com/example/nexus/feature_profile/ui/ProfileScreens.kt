@@ -42,6 +42,7 @@ fun ProfileScreen(
     viewModel: ProfileViewModel? = null,
     onNavigateToEdit: () -> Unit,
     onNavigateToSettings: () -> Unit = {},
+    onNavigateToHelpSupport: () -> Unit = {},
     onLogout: () -> Unit,
     onNavigateToTab: (String) -> Unit = {}
 ) {
@@ -191,7 +192,7 @@ fun ProfileScreen(
             )
 
             ProfileMenuItem(Icons.Outlined.Settings, "Cài đặt & Quyền riêng tư") { onNavigateToSettings() }
-            ProfileMenuItem(Icons.Outlined.HelpOutline, "Trợ giúp & Hỗ trợ") {}
+            ProfileMenuItem(Icons.Outlined.HelpOutline, "Trợ giúp & Hỗ trợ") { onNavigateToHelpSupport() }
             ProfileMenuItem(Icons.Outlined.Info, "Giới thiệu về NEXUS") {}
 
             Spacer(modifier = Modifier.height(24.dp))

@@ -46,7 +46,8 @@ import kotlinx.coroutines.launch
 fun LoginScreen(
     viewModel: AuthViewModel,
     onNavigateToRegister: () -> Unit,
-    onLoginSuccess: () -> Unit
+    onLoginSuccess: () -> Unit,
+    onNavigateToLocked: () -> Unit = {}
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -55,6 +56,15 @@ fun LoginScreen(
 
     val loginState by viewModel.loginState.collectAsState()
     val forgotPasswordState by viewModel.forgotPasswordState.collectAsState()
+    val isBanned by viewModel.isBanned.collectAsState()
+
+    // Navigate to locked screen when account is banned
+    LaunchedEffect(isBanned) {
+        if (isBanned) {
+            onNavigateToLocked()
+            viewModel.resetLoginState()
+        }
+    }
     val snackbarHostState = remember { SnackbarHostState() }
     val nc = MaterialTheme.nexusColors
     val context = LocalContext.current

@@ -66,6 +66,11 @@ sealed class Screen(
     data object ChangePassword : Screen("change_password", "Đổi mật khẩu")
     data object AddAccount : Screen("add_account", "Thêm tài khoản")
 
+    // ── Admin ──
+    data object AccountLocked : Screen("account_locked", "Tài khoản bị khóa")
+    data object HelpSupport : Screen("help_support", "Trợ giúp & Hỗ trợ")
+    data object NotificationList : Screen("notification_list", "Thông báo")
+
     // ── Call ──
     data object OngoingCall : Screen("ongoing_call/{callId}/{callType}?receiverId={receiverId}&receiverName={receiverName}", "Cuộc gọi") {
         fun createRoute(callId: String, callType: String = "voice", receiverId: String = "", receiverName: String = "") =

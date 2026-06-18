@@ -64,6 +64,7 @@ import androidx.compose.material.icons.filled.Forward
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonAdd
@@ -268,6 +269,7 @@ fun ViewNoteDialog(
     isMyStory: Boolean = false,
     onDelete: (() -> Unit)? = null,
     onNoteViewed: (() -> Unit)? = null,
+    onReply: ((String) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val nc = MaterialTheme.nexusColors
@@ -402,6 +404,7 @@ fun ViewNoteDialog(
                         IconButton(
                             onClick = {
                                 if (replyText.isNotBlank()) {
+                                    onReply?.invoke(replyText.trim())
                                     onDismiss()
                                 }
                             },
@@ -423,6 +426,7 @@ fun ViewStoryDialog(
     isMyStory: Boolean = false,
     onDelete: ((String) -> Unit)? = null,
     onStoryViewed: ((String) -> Unit)? = null,
+    onReply: ((String) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val nc = MaterialTheme.nexusColors
@@ -646,6 +650,44 @@ fun ViewStoryDialog(
                         Icon(Icons.Default.Delete, contentDescription = "Delete", tint = nc.errorText)
                     }
                 }
+            } else {
+                // Reply input for other's story
+                var replyText by remember { mutableStateOf("") }
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(Color.Black.copy(alpha = 0.6f))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = replyText,
+                        onValueChange = { replyText = it },
+                        placeholder = { Text("Trả lời tin...", color = Color.Gray) },
+                        modifier = Modifier.weight(1f),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color.White,
+                            unfocusedBorderColor = Color.DarkGray,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(24.dp),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    IconButton(
+                        onClick = {
+                            if (replyText.isNotBlank()) {
+                                onReply?.invoke(replyText.trim())
+                                onDismiss()
+                            }
+                        },
+                        modifier = Modifier.background(if (replyText.isNotBlank()) Color(0xFF00C6FF) else Color.DarkGray, CircleShape).size(48.dp)
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Gửi", tint = Color.White)
+                    }
+                }
             }
         }
     }
@@ -760,6 +802,7 @@ fun ChatListScreen(
     onNavigateToCreateGroup: () -> Unit,
     onNavigateToSearch: () -> Unit,
     onNavigateToCamera: () -> Unit = {},
+    onNavigateToNotifications: () -> Unit = {},
     onNavigateToTab: (String) -> Unit = {}
 ) {
     val nc = MaterialTheme.nexusColors
@@ -820,6 +863,14 @@ fun ChatListScreen(
                     user = user,
                     isMyStory = false,
                     onStoryViewed = { storyId -> viewModel?.markStoryAsViewed(storyId) },
+                    onReply = { replyText ->
+                        val currentStory = storyList.firstOrNull()
+                        if (currentStory != null) {
+                            viewModel?.replyToStory(currentStory, user.displayName.ifEmpty { user.username }, replyText) { chatId ->
+                                onNavigateToConversation(chatId)
+                            }
+                        }
+                    },
                     onDismiss = { viewingStoryUser = null }
                 )
             } else {
@@ -856,6 +907,11 @@ fun ChatListScreen(
                     user = user,
                     isMyStory = false,
                     onNoteViewed = { viewModel?.markStoryAsViewed(note.id) },
+                    onReply = { replyText ->
+                        viewModel?.replyToStory(note, user.displayName.ifEmpty { user.username }, replyText) { chatId ->
+                            onNavigateToConversation(chatId)
+                        }
+                    },
                     onDismiss = { viewingNoteUser = null }
                 )
             } else {
@@ -889,14 +945,50 @@ fun ChatListScreen(
             contentPadding = PaddingValues(bottom = 80.dp)
         ) {
             item {
-                Text(
-                    text = "NEXUS",
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Black,
-                    color = NexusPrimary,
-                    letterSpacing = 1.sp,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "NEXUS",
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Black,
+                        color = NexusPrimary,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = onNavigateToNotifications) {
+                        Box {
+                            Icon(
+                                Icons.Default.Notifications,
+                                contentDescription = "Thông báo",
+                                tint = nc.textPrimary,
+                                modifier = Modifier.size(26.dp)
+                            )
+                            val unreadCount = viewModel?.unreadNotificationCount?.collectAsState()?.value ?: 0
+                            if (unreadCount > 0) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .offset(x = 4.dp, y = (-4).dp)
+                                        .size(18.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFEF4444)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = if (unreadCount > 9) "9+" else "$unreadCount",
+                                        color = Color.White,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             item {
@@ -1770,6 +1862,9 @@ fun ConversationScreen(
     }
     var showFullScreenVideo by remember { mutableStateOf<String?>(null) }
     var messageToForward by remember { mutableStateOf<Message?>(null) }
+    var storyReplyViewUserId by remember { mutableStateOf<String?>(null) }
+    var storyReplyViewStoryId by remember { mutableStateOf<String?>(null) }
+    var storyReplyViewUser by remember { mutableStateOf<User?>(null) }
     val clipboardManager = LocalClipboardManager.current
     val otherId = otherUser?.uid ?: ""
 
@@ -2176,6 +2271,19 @@ fun ConversationScreen(
                                         },
                                         onContactClick = { contactUserId ->
                                             onNavigateToProfile(contactUserId)
+                                        },
+                                        onStoryReplyClick = { storyId ->
+                                            // Find story owner from stories/notes state and open viewer
+                                            val allStories = (viewModel?.stories?.value ?: emptyMap()) + (viewModel?.notes?.value ?: emptyMap())
+                                            val storyOwnerId = allStories.entries.find { it.value.id == storyId }?.key
+                                            if (storyOwnerId != null) {
+                                                storyReplyViewUserId = storyOwnerId
+                                                storyReplyViewStoryId = storyId
+                                                coroutineScope.launch {
+                                                    val users = viewModel?.getUsersByIds(listOf(storyOwnerId))
+                                                    storyReplyViewUser = users?.firstOrNull()
+                                                }
+                                            }
                                         }
                                     )
                                 }
@@ -2292,6 +2400,9 @@ fun ConversationScreen(
                 Constants.MESSAGE_TYPE_VIDEO -> "🎬 Video"
                 Constants.MESSAGE_TYPE_VOICE -> "🎤 Tin nhắn thoại"
                 Constants.MESSAGE_TYPE_FILE -> "📎 ${replyingToMessage.fileName.ifEmpty { "Tệp" }}"
+                Constants.MESSAGE_TYPE_STORY_REPLY -> "📸 Trả lời tin"
+                Constants.MESSAGE_TYPE_NOTE_REPLY -> "📝 Phản hồi ghi chú"
+                Constants.MESSAGE_TYPE_CONTACT -> "👤 ${replyingToMessage.contactName.ifEmpty { "Liên hệ" }}"
                 else -> replyingToMessage.text
             }
             val replyHeaderText = if (replyingToMessage.senderId == currentUserId) {
@@ -2502,6 +2613,41 @@ fun ConversationScreen(
 
         showFullScreenVideo?.let { url ->
             FullScreenVideoPlayer(videoUrl = url, onDismiss = { showFullScreenVideo = null })
+        }
+
+        // Story viewer from story reply click
+        if (storyReplyViewUserId != null && storyReplyViewStoryId != null) {
+            val storyOwnerId = storyReplyViewUserId!!
+            val targetStoryId = storyReplyViewStoryId!!
+            val allImageStories = viewModel?.imageStories?.collectAsState()?.value ?: emptyMap()
+            val allNotes = viewModel?.notes?.collectAsState()?.value ?: emptyMap()
+
+            // Try image story first
+            val imageStoryList = allImageStories[storyOwnerId]
+            val noteStory = allNotes[storyOwnerId]
+
+            if (imageStoryList != null && imageStoryList.any { it.id == targetStoryId }) {
+                val owner = storyReplyViewUser ?: User(uid = storyOwnerId, displayName = "Người dùng")
+                ViewStoryDialog(
+                    stories = imageStoryList,
+                    user = owner,
+                    isMyStory = storyOwnerId == currentUserId,
+                    onDismiss = { storyReplyViewUserId = null; storyReplyViewStoryId = null; storyReplyViewUser = null }
+                )
+            } else if (noteStory != null && noteStory.id == targetStoryId) {
+                val owner = storyReplyViewUser ?: User(uid = storyOwnerId, displayName = "Người dùng")
+                ViewNoteDialog(
+                    story = noteStory,
+                    user = owner,
+                    isMyStory = storyOwnerId == currentUserId,
+                    onDismiss = { storyReplyViewUserId = null; storyReplyViewStoryId = null; storyReplyViewUser = null }
+                )
+            } else {
+                // Story expired or not found
+                storyReplyViewUserId = null
+                storyReplyViewStoryId = null
+                storyReplyViewUser = null
+            }
         }
 
         messageToForward?.let { msg ->
@@ -3256,6 +3402,176 @@ fun ConversationScreen(
     }
 }
 
+@Composable
+private fun StoryReplyBubble(
+    message: Message?,
+    text: String,
+    isMe: Boolean,
+    sentBubbleBrush: Brush,
+    bubbleShape: RoundedCornerShape,
+    nc: NexusColors,
+    reactions: Map<String, String>,
+    onLongClick: (() -> Unit)?,
+    onForward: (() -> Unit)?,
+    onReactionsClick: ((Map<String, String>, String) -> Unit)?,
+    onStoryReplyClick: ((String) -> Unit)?
+) {
+    val isNoteReply = message?.type == Constants.MESSAGE_TYPE_NOTE_REPLY
+    val storyId = message?.storyId ?: ""
+    val storyContent = message?.storyContent ?: ""
+    val storyCaption = message?.storyCaption ?: ""
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        if (isMe) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF2A2A2A))
+                    .clickable { onForward?.invoke() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.Reply,
+                    contentDescription = "Chuyển tiếp",
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp).graphicsLayer(scaleX = -1f)
+                )
+            }
+        }
+        Box(
+            modifier = Modifier
+                .widthIn(max = 260.dp)
+                .then(if (reactions.isNotEmpty()) Modifier.padding(bottom = 12.dp) else Modifier)
+        ) {
+            Box(
+                modifier = Modifier
+                    .combinedClickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { if (storyId.isNotEmpty()) onStoryReplyClick?.invoke(storyId) },
+                        onLongClick = onLongClick
+                    )
+                    .then(if (isMe) Modifier.background(sentBubbleBrush, bubbleShape) else Modifier.background(nc.receivedBubble, bubbleShape))
+                    .padding(4.dp)
+            ) {
+                Column {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                            .background(Color.Black.copy(alpha = 0.3f))
+                            .clickable { if (storyId.isNotEmpty()) onStoryReplyClick?.invoke(storyId) }
+                            .padding(12.dp)
+                    ) {
+                        if (isNoteReply) {
+                            Column {
+                                Text(
+                                    text = "Ghi chú",
+                                    color = nc.textTertiary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = storyContent,
+                                    color = if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
+                                    fontSize = 14.sp,
+                                    maxLines = 3,
+                                    overflow = TextOverflow.Ellipsis,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        } else {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                if (storyContent.isNotEmpty()) {
+                                    AsyncImage(
+                                        model = storyContent,
+                                        contentDescription = null,
+                                        modifier = Modifier
+                                            .size(48.dp)
+                                            .clip(RoundedCornerShape(8.dp)),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Tin",
+                                        color = nc.textTertiary,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    if (storyCaption.isNotEmpty()) {
+                                        Text(
+                                            text = storyCaption,
+                                            color = if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
+                                            fontSize = 13.sp,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Text(
+                        text = text,
+                        color = if (isMe) nc.sentBubbleText else nc.receivedBubbleText,
+                        fontSize = 15.sp,
+                        lineHeight = 20.sp,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                }
+            }
+            if (reactions.isNotEmpty()) {
+                val displayEmoji = reactions.values.groupBy { e: String -> e }.maxByOrNull { entry -> entry.value.size }?.key ?: reactions.values.first()
+                val count = reactions.size
+                Box(modifier = Modifier.matchParentSize()) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .offset(x = 2.dp, y = 10.dp)
+                            .clickable { onReactionsClick?.invoke(reactions, message?.id ?: "") }
+                            .background(nc.background, RoundedCornerShape(10.dp))
+                            .border(1.dp, nc.divider, RoundedCornerShape(10.dp))
+                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(displayEmoji, fontSize = 14.sp)
+                            if (count > 1) {
+                                Text(text = count.toString(), color = nc.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 1.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (!isMe) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF2A2A2A))
+                    .clickable { onForward?.invoke() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.Reply,
+                    contentDescription = "Chuyển tiếp",
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp).graphicsLayer(scaleX = -1f)
+                )
+            }
+        }
+    }
+}
+
 @androidx.annotation.OptIn(UnstableApi::class)
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -3286,7 +3602,8 @@ fun MessageBubble(
     onQuoteClick: ((String) -> Unit)? = null,
     onForward: (() -> Unit)? = null,
     onVideoClick: (() -> Unit)? = null,
-    onContactClick: ((String) -> Unit)? = null
+    onContactClick: ((String) -> Unit)? = null,
+    onStoryReplyClick: ((String) -> Unit)? = null
 ) {
     val nc = MaterialTheme.nexusColors
     val avatarSize = 28
@@ -3436,6 +3753,8 @@ fun MessageBubble(
                             Constants.MESSAGE_TYPE_VOICE -> "🎤 Tin nhắn thoại"
                             Constants.MESSAGE_TYPE_FILE -> "📎 Tệp"
                             Constants.MESSAGE_TYPE_CONTACT -> "👤 Liên hệ"
+                            Constants.MESSAGE_TYPE_STORY_REPLY -> "📸 Trả lời tin"
+                            Constants.MESSAGE_TYPE_NOTE_REPLY -> "📝 Phản hồi ghi chú"
                             else -> replyTo.text
                         }
                         Box(
@@ -4192,6 +4511,20 @@ fun MessageBubble(
                                 }
                             }
                         }
+                    } else if ((messageType == Constants.MESSAGE_TYPE_STORY_REPLY || messageType == Constants.MESSAGE_TYPE_NOTE_REPLY) && !isRecalled) {
+                        StoryReplyBubble(
+                            message = message,
+                            text = text,
+                            isMe = isMe,
+                            sentBubbleBrush = sentBubbleBrush,
+                            bubbleShape = bubbleShape,
+                            nc = nc,
+                            reactions = reactions,
+                            onLongClick = onLongClick,
+                            onForward = onForward,
+                            onReactionsClick = onReactionsClick,
+                            onStoryReplyClick = onStoryReplyClick
+                        )
                     } else {
                         // ── Text bubble: overlay reaction badge ──
                         val isUrl = remember(text) { Patterns.WEB_URL.matcher(text.trim()).matches() }

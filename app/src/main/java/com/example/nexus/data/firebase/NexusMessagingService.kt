@@ -64,6 +64,7 @@ class NexusMessagingService : FirebaseMessagingService() {
             "message"        -> handleMessageNotification(data)
             "friend_request" -> handleFriendRequestNotification(data)
             "call"           -> handleCallNotification(data)
+            "system_notification" -> handleSystemNotification(data)
             else             -> handleMessageNotification(data)
         }
     }
@@ -259,6 +260,65 @@ class NexusMessagingService : FirebaseMessagingService() {
 
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.notify(("fr_$senderId").hashCode(), notification)
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // THÔNG BÁO HỆ THỐNG
+    // ════════════════════════════════════════════════════════════════
+
+    private fun handleSystemNotification(data: Map<String, String>) {
+        val title = data["title"] ?: "NEXUS"
+        val content = data["content"] ?: "Bạn có thông báo mới"
+        val notificationId = data["notificationId"] ?: ""
+
+        // Store in user_notifications for read tracking
+        val userId = FirebaseAuth.getInstance().currentUser?.uid
+        if (userId != null && notificationId.isNotEmpty()) {
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    FirebaseFirestore.getInstance()
+                        .collection(Constants.COLLECTION_USER_NOTIFICATIONS)
+                        .add(mapOf(
+                            "notificationId" to notificationId,
+                            "userId" to userId,
+                            "isRead" to false,
+                            "createdAt" to com.google.firebase.Timestamp.now()
+                        ))
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to create user notification", e)
+                }
+            }
+        }
+
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("navigateTo", "notifications")
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this, notificationId.hashCode(), intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val accentColor = ContextCompat.getColor(this, R.color.nexus_accent)
+
+        val notification = NotificationCompat.Builder(this, NexusApplication.CHANNEL_MESSAGES)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setColor(accentColor)
+            .setContentTitle(title)
+            .setContentText(content)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(content))
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
+            .setVibrate(longArrayOf(0, 250, 250, 250))
+            .setCategory(NotificationCompat.CATEGORY_SOCIAL)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .build()
+
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(notificationId.hashCode(), notification)
     }
 
     // ════════════════════════════════════════════════════════════════

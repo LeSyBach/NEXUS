@@ -68,6 +68,12 @@ class MainActivity : FragmentActivity() {
     @Inject
     lateinit var biometricManager: com.example.nexus.core.utils.BiometricManager
 
+    @Inject
+    lateinit var firestoreService: com.example.nexus.data.firebase.FirestoreService
+
+    @Inject
+    lateinit var authService: com.example.nexus.data.firebase.AuthService
+
     private var isAuthenticated by mutableStateOf(true)
 
     // State để trigger recompose khi intent mới đến (app đang mở)
@@ -155,10 +161,42 @@ class MainActivity : FragmentActivity() {
                                     launchSingleTop = true
                                 }
                             }
+                            "notifications" -> {
+                                navController.navigate(com.example.nexus.navigation.Screen.NotificationList.route) {
+                                    launchSingleTop = true
+                                }
+                            }
                         }
                     }
 
                     NexusNavGraph(navController = navController, isLoggedIn = isLoggedIn)
+
+                    // Observe account ban status in realtime
+                    if (isLoggedIn) {
+                        LaunchedEffect(Unit) {
+                            val userId = authService.currentUserId ?: return@LaunchedEffect
+                            firestoreService.observeUser(userId).collect { user ->
+                                if (user?.isBanned == true) {
+                                    // User is banned - navigate to AccountLocked
+                                    navController.navigate(com.example.nexus.navigation.Screen.AccountLocked.route) {
+                                        launchSingleTop = true
+                                    }
+                                } else if (user == null) {
+                                    // User document is null - could be auth issue or banned
+                                    // Check if user is still authenticated
+                                    val currentUser = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser
+                                    if (currentUser != null) {
+                                        // User is authenticated but we can't read their document
+                                        // This happens when auth is disabled by admin
+                                        // Navigate to AccountLocked to be safe
+                                        navController.navigate(com.example.nexus.navigation.Screen.AccountLocked.route) {
+                                            launchSingleTop = true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Biometric lock overlay

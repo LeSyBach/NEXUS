@@ -206,6 +206,24 @@ class ChatRepository @Inject constructor(
         }
     }
 
+    suspend fun createDirectChat(otherUserId: String): String? {
+        val userId = authService.currentUserId ?: return null
+        return try {
+            // Check if chat already exists first
+            val existing = firestoreService.findDirectChat(userId, otherUserId)
+            if (existing != null) return existing.id
+
+            val chat = Chat(
+                type = Constants.CHAT_TYPE_DIRECT,
+                participants = listOf(userId, otherUserId),
+                createdBy = userId
+            )
+            firestoreService.createChat(chat)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     suspend fun sendImageMessage(chatId: String, imageUrl: String): Resource<Unit> {
         return try {
             val userId = authService.currentUserId ?: return Resource.Error("User not logged in")
@@ -670,6 +688,51 @@ class ChatRepository @Inject constructor(
 
     suspend fun unpinMessage(chatId: String) {
         firestoreService.unpinMessage(chatId)
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // STORY / NOTE REPLY
+    // ══════════════════════════════════════════════════════════════
+
+    suspend fun sendStoryReplyMessage(
+        chatId: String,
+        storyId: String,
+        storyContent: String,
+        storyCaption: String,
+        isNote: Boolean,
+        replyText: String
+    ): Resource<Unit> {
+        return try {
+            val userId = authService.currentUserId ?: return Resource.Error("User not logged in")
+            val currentUser = firestoreService.getUser(userId)
+            val message = Message(
+                senderId = userId,
+                senderName = currentUser?.displayName?.ifEmpty { currentUser.username } ?: "Unknown",
+                text = replyText,
+                type = if (isNote) Constants.MESSAGE_TYPE_NOTE_REPLY else Constants.MESSAGE_TYPE_STORY_REPLY,
+                storyId = storyId,
+                storyContent = storyContent,
+                storyCaption = storyCaption
+            )
+            firestoreService.sendMessage(chatId, message)
+
+            val chat = firestoreService.getChat(chatId)
+            if (chat != null) {
+                val otherParticipants = chat.participants.filter { it != userId }
+                for (receiverId in otherParticipants) {
+                    notificationService.sendMessageNotification(
+                        receiverId = receiverId,
+                        senderName = currentUser?.displayName?.ifEmpty { currentUser.username } ?: "User",
+                        messageText = if (isNote) "Đã phản hồi ghi chú" else "Đã trả lời ảnh",
+                        chatId = chatId,
+                        senderId = userId
+                    )
+                }
+            }
+            Resource.Success(Unit)
+        } catch (e: Exception) {
+            Resource.Error(e.message ?: "Failed to send story reply")
+        }
     }
 
     // ══════════════════════════════════════════════════════════════

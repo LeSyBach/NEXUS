@@ -11,6 +11,9 @@ object Constants {
     const val COLLECTION_FRIEND_REQUESTS = "friend_requests"
     const val COLLECTION_GROUPS = "groups"
     const val COLLECTION_CALLS = "calls"
+    const val COLLECTION_FEEDBACK = "feedback"
+    const val COLLECTION_SYSTEM_NOTIFICATIONS = "notifications"
+    const val COLLECTION_USER_NOTIFICATIONS = "user_notifications"
 
     // Firebase Storage Paths
     const val STORAGE_AVATARS = "avatars"
@@ -32,6 +35,8 @@ object Constants {
     const val MESSAGE_TYPE_SYSTEM = "system"
     const val MESSAGE_TYPE_CALL = "call"
     const val MESSAGE_TYPE_CONTACT = "contact"
+    const val MESSAGE_TYPE_STORY_REPLY = "story_reply"
+    const val MESSAGE_TYPE_NOTE_REPLY = "note_reply"
 
     // Message Status
     const val MESSAGE_STATUS_SENT = "sent"
@@ -58,6 +63,7 @@ object Constants {
     const val USER_STATUS_OFFLINE = "offline"
     const val USER_STATUS_ACTIVE = "active"
     const val USER_STATUS_PENDING_DELETION = "pending_deletion"
+    const val USER_STATUS_LOCKED = "locked"
 
     // Relationship Status
     const val RELATION_NONE = "none"

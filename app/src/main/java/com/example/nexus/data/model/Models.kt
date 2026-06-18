@@ -23,6 +23,8 @@ data class User(
     val bio: String = "",
     val friends: List<String> = emptyList(),
     val blockedUsers: List<String> = emptyList(),
+    val isBanned: Boolean = false,
+    val bannedAt: Timestamp? = null,
     @ServerTimestamp
     val createdAt: Timestamp? = null,
     @ServerTimestamp
@@ -107,6 +109,9 @@ data class Message(
     val contactName: String = "",
     val contactPhone: String = "",
     val contactAvatarUrl: String = "",
+    val storyId: String = "",
+    val storyContent: String = "",
+    val storyCaption: String = "",
     val hasLink: Boolean = false,
     @ServerTimestamp
     val timestamp: Timestamp? = null,
@@ -187,6 +192,52 @@ data class CallRecord(
     val chatId: String = "",
     val startTime: Timestamp? = null,
     val endTime: Timestamp? = null,
+    @ServerTimestamp
+    val createdAt: Timestamp? = null,
+)
+
+/**
+ * Represents a user feedback/appeal submission.
+ * Maps to Firestore `feedback` collection.
+ */
+data class Feedback(
+    @DocumentId
+    val id: String = "",
+    val userId: String = "",
+    val userName: String = "",
+    val userEmail: String = "",
+    val subject: String = "",
+    val content: String = "",
+    val type: String = "appeal", // appeal, support
+    val status: String = "pending", // pending, reviewed, resolved
+    @ServerTimestamp
+    val createdAt: Timestamp? = null,
+)
+
+/**
+ * Represents a system notification from admin.
+ * Maps to Firestore `notifications` collection.
+ */
+data class SystemNotification(
+    @DocumentId
+    val id: String = "",
+    val title: String = "",
+    val body: String = "",
+    val target: String = "all",
+    val created_at: String = "",
+    val status: String = "sent",
+)
+
+/**
+ * Represents per-user notification read status.
+ * Maps to Firestore `user_notifications` collection.
+ */
+data class UserNotification(
+    @DocumentId
+    val id: String = "",
+    val notificationId: String = "",
+    val userId: String = "",
+    val isRead: Boolean = false,
     @ServerTimestamp
     val createdAt: Timestamp? = null,
 )

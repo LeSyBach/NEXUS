@@ -41,6 +41,10 @@ import com.example.nexus.feature_call.viewmodel.CallViewModel
 import com.example.nexus.feature_profile.ui.ProfileScreen
 import com.example.nexus.feature_profile.ui.EditProfileScreen
 import com.example.nexus.feature_profile.viewmodel.ProfileViewModel
+import com.example.nexus.feature_admin.viewmodel.AdminViewModel
+import com.example.nexus.feature_admin.ui.AccountLockedScreen
+import com.example.nexus.feature_admin.ui.HelpSupportScreen
+import com.example.nexus.feature_admin.ui.NotificationListScreen
 import com.example.nexus.ui.theme.nexusColors
 /**
  * Main navigation graph for NEXUS.
@@ -93,6 +97,11 @@ fun NexusNavGraph(
                     navController.navigate(Screen.ChatList.route) {
                         popUpTo(Screen.Login.route) { inclusive = true }
                     }
+                },
+                onNavigateToLocked = {
+                    navController.navigate(Screen.AccountLocked.route) {
+                        popUpTo(Screen.Login.route) { inclusive = true }
+                    }
                 }
             )
         }
@@ -142,6 +151,9 @@ fun NexusNavGraph(
                 },
                 onNavigateToCamera = {
                     navController.navigate(Screen.LocketCamera.route)
+                },
+                onNavigateToNotifications = {
+                    navController.navigate(Screen.NotificationList.route)
                 },
                 onNavigateToTab = onNavigateToTab
             )
@@ -195,6 +207,9 @@ fun NexusNavGraph(
                 },
                 onNavigateToSettings = {
                     navController.navigate(Screen.Settings.route)
+                },
+                onNavigateToHelpSupport = {
+                    navController.navigate(Screen.HelpSupport.route)
                 },
                 onLogout = {
                     navController.navigate(Screen.Login.route) {
@@ -496,6 +511,11 @@ fun NexusNavGraph(
                             inclusive = true
                         }
                     }
+                },
+                onNavigateToLocked = {
+                    navController.navigate(Screen.AccountLocked.route) {
+                        popUpTo(Screen.AddAccount.route) { inclusive = true }
+                    }
                 }
             )
         }
@@ -505,6 +525,44 @@ fun NexusNavGraph(
             com.example.nexus.feature_profile.ui.ChangePasswordScreen(
                 viewModel = securityViewModel,
                 onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        // ══════ ADMIN ══════
+        composable(Screen.HelpSupport.route) {
+            val adminViewModel: AdminViewModel = hiltViewModel()
+            HelpSupportScreen(
+                viewModel = adminViewModel,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(Screen.NotificationList.route) {
+            val adminViewModel: AdminViewModel = hiltViewModel()
+            NotificationListScreen(
+                viewModel = adminViewModel,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(Screen.AccountLocked.route) {
+            val adminViewModel: AdminViewModel = hiltViewModel()
+            AccountLockedScreen(
+                viewModel = adminViewModel,
+                onLogout = {
+                    navController.navigate(Screen.Login.route) {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            inclusive = true
+                        }
+                    }
+                },
+                onSwitchAccount = {
+                    navController.navigate(Screen.Login.route) {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            inclusive = true
+                        }
+                    }
+                }
             )
         }
     }

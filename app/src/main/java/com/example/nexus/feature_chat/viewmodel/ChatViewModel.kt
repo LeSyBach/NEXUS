@@ -2,6 +2,7 @@ package com.example.nexus.feature_chat.viewmodel
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.NonCancellable
@@ -18,6 +19,7 @@ import com.example.nexus.data.firebase.PlaybackState
 import com.example.nexus.data.firebase.VoiceRecorderHelper
 import com.example.nexus.data.model.Chat
 import com.example.nexus.data.model.Message
+import com.example.nexus.data.model.Story
 import com.google.firebase.Timestamp
 import com.example.nexus.data.model.PinnedMessage
 import com.example.nexus.data.model.ReplyMessage
@@ -71,7 +73,8 @@ class ChatViewModel @Inject constructor(
     private val aiChatService: AiChatService,
     private val muteManager: MuteManager,
     private val chatPreferencesManager: com.example.nexus.core.utils.ChatPreferencesManager,
-    networkMonitor: NetworkMonitor
+    networkMonitor: NetworkMonitor,
+    private val adminRepository: com.example.nexus.data.repository.AdminRepository
 ) : ViewModel() {
 
     private val _chatsState = MutableStateFlow<Resource<List<Chat>>>(Resource.Idle)
@@ -166,6 +169,9 @@ class ChatViewModel @Inject constructor(
     private val _pinnedChatIds = MutableStateFlow<Set<String>>(emptySet())
     val pinnedChatIds: StateFlow<Set<String>> = _pinnedChatIds
 
+    // Use shared state from AdminRepository
+    val unreadNotificationCount: StateFlow<Int> = adminRepository.unreadNotificationCount
+
     private val _currentSearchIndex = MutableStateFlow(-1)
     val currentSearchIndex: StateFlow<Int> = _currentSearchIndex
 
@@ -229,6 +235,8 @@ class ChatViewModel @Inject constructor(
                 chatRepository.observeUser(uid).collect { _currentUser.value = it }
             }
         }
+        // Start observing notifications for badge count
+        adminRepository.startObservingIfNeeded()
     }
 
     private fun loadStories() {
@@ -559,6 +567,8 @@ class ChatViewModel @Inject constructor(
                 Constants.MESSAGE_TYPE_VOICE -> "🎤 Tin nhắn thoại"
                 Constants.MESSAGE_TYPE_FILE -> "📎 ${msg.fileName.ifEmpty { "Tệp" }}"
                 Constants.MESSAGE_TYPE_CONTACT -> "👤 ${msg.contactName.ifEmpty { "Liên hệ" }}"
+                Constants.MESSAGE_TYPE_STORY_REPLY -> "📸 Trả lời tin"
+                Constants.MESSAGE_TYPE_NOTE_REPLY -> "📝 Phản hồi ghi chú"
                 else -> msg.text
             }
             ReplyMessage(
@@ -581,6 +591,41 @@ class ChatViewModel @Inject constructor(
 
     fun setReplyingMessage(message: Message?) {
         _replyingToMessage.value = message
+    }
+
+    fun replyToStory(story: Story, storyOwnerName: String, text: String, onNavigateToChat: (String) -> Unit) {
+        if (text.isBlank()) return
+        viewModelScope.launch {
+            try {
+                val chatId = chatRepository.findChatIdByParticipants(story.userId)
+                if (chatId != null) {
+                    chatRepository.sendStoryReplyMessage(
+                        chatId = chatId,
+                        storyId = story.id,
+                        storyContent = story.content,
+                        storyCaption = story.caption ?: "",
+                        isNote = story.type == "text",
+                        replyText = text.trim()
+                    )
+                    onNavigateToChat(chatId)
+                } else {
+                    val newChatId = chatRepository.createDirectChat(story.userId)
+                    if (newChatId != null) {
+                        chatRepository.sendStoryReplyMessage(
+                            chatId = newChatId,
+                            storyId = story.id,
+                            storyContent = story.content,
+                            storyCaption = story.caption ?: "",
+                            isNote = story.type == "text",
+                            replyText = text.trim()
+                        )
+                        onNavigateToChat(newChatId)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "replyToStory failed", e)
+            }
+        }
     }
 
     fun toggleReaction(chatId: String, messageId: String, emoji: String) {

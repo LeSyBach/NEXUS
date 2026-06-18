@@ -20,6 +20,9 @@ class AuthViewModel @Inject constructor(
     private val _loginState = MutableStateFlow<Resource<Unit>>(Resource.Idle)
     val loginState: StateFlow<Resource<Unit>> = _loginState.asStateFlow()
 
+    private val _isBanned = MutableStateFlow(false)
+    val isBanned: StateFlow<Boolean> = _isBanned.asStateFlow()
+
     private val _registerState = MutableStateFlow<Resource<Unit>>(Resource.Idle)
     val registerState: StateFlow<Resource<Unit>> = _registerState.asStateFlow()
 
@@ -42,7 +45,11 @@ class AuthViewModel @Inject constructor(
                 authRepository.login(email, password)
                 _loginState.value = Resource.Success(Unit)
             } catch (e: Exception) {
-                _loginState.value = Resource.Error(e.message ?: "Đăng nhập thất bại. Kiểm tra lại thông tin.")
+                val msg = e.message ?: ""
+                if (msg == "ACCOUNT_BANNED") {
+                    _isBanned.value = true
+                }
+                _loginState.value = Resource.Error(msg)
             }
         }
     }
@@ -85,7 +92,11 @@ class AuthViewModel @Inject constructor(
                 authRepository.loginWithGoogle(idToken)
                 _loginState.value = Resource.Success(Unit)
             } catch (e: Exception) {
-                _loginState.value = Resource.Error(e.message ?: "Đăng nhập Google thất bại")
+                val msg = e.message ?: ""
+                if (msg == "ACCOUNT_BANNED") {
+                    _isBanned.value = true
+                }
+                _loginState.value = Resource.Error(msg)
             }
         }
     }

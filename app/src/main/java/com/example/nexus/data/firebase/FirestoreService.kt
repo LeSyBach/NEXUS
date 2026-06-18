@@ -1,6 +1,7 @@
 package com.example.nexus.data.firebase
 
 import android.R.id.message
+import android.util.Log
 import com.example.nexus.core.utils.Constants
 import com.example.nexus.data.model.*
 import com.google.firebase.Timestamp
@@ -48,7 +49,10 @@ class FirestoreService @Inject constructor(
             .document(userId)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    close(error)
+                    // Don't close the Flow on error - just log and emit null
+                    // This handles cases like auth disabled (PERMISSION_DENIED)
+                    Log.w("FirestoreService", "observeUser error", error)
+                    trySend(null)
                     return@addSnapshotListener
                 }
                 trySend(snapshot?.toObject(User::class.java))
@@ -1005,6 +1009,96 @@ class FirestoreService @Inject constructor(
             .await()
         for (doc in snapshot.documents) {
             doc.reference.delete().await()
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // FEEDBACK
+    // ══════════════════════════════════════════════════════════════
+
+    suspend fun submitFeedback(feedback: Feedback) {
+        firestore.collection(Constants.COLLECTION_FEEDBACK)
+            .add(feedback)
+            .await()
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // SYSTEM NOTIFICATIONS
+    // ══════════════════════════════════════════════════════════════
+
+    fun observeSystemNotifications(): Flow<List<SystemNotification>> {
+        return callbackFlow {
+            val listener = firestore.collection(Constants.COLLECTION_SYSTEM_NOTIFICATIONS)
+                .orderBy("created_at", com.google.firebase.firestore.Query.Direction.DESCENDING)
+                .limit(50)
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        Log.w("FirestoreService", "observeSystemNotifications error", error)
+                        trySend(emptyList())
+                        return@addSnapshotListener
+                    }
+                    val notifications = snapshot?.toObjects(SystemNotification::class.java) ?: emptyList()
+                    trySend(notifications)
+                }
+            awaitClose { listener.remove() }
+        }
+    }
+
+    fun observeUserNotifications(userId: String): Flow<List<UserNotification>> {
+        return callbackFlow {
+            val listener = firestore.collection(Constants.COLLECTION_USER_NOTIFICATIONS)
+                .whereEqualTo("userId", userId)
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        close(error)
+                        return@addSnapshotListener
+                    }
+                    val notifications = snapshot?.toObjects(UserNotification::class.java) ?: emptyList()
+                    trySend(notifications)
+                }
+            awaitClose { listener.remove() }
+        }
+    }
+
+    suspend fun markNotificationRead(notificationId: String, userId: String) {
+        val snapshot = firestore.collection(Constants.COLLECTION_USER_NOTIFICATIONS)
+            .whereEqualTo("notificationId", notificationId)
+            .whereEqualTo("userId", userId)
+            .get()
+            .await()
+        if (snapshot.isEmpty) {
+            // Create new document with isRead = true
+            firestore.collection(Constants.COLLECTION_USER_NOTIFICATIONS)
+                .add(mapOf(
+                    "notificationId" to notificationId,
+                    "userId" to userId,
+                    "isRead" to true,
+                    "createdAt" to Timestamp.now()
+                ))
+                .await()
+        } else {
+            // Update existing document
+            for (doc in snapshot.documents) {
+                doc.reference.update("isRead", true).await()
+            }
+        }
+    }
+
+    suspend fun createUserNotification(notificationId: String, userId: String) {
+        val existing = firestore.collection(Constants.COLLECTION_USER_NOTIFICATIONS)
+            .whereEqualTo("notificationId", notificationId)
+            .whereEqualTo("userId", userId)
+            .get()
+            .await()
+        if (existing.isEmpty) {
+            val userNotif = UserNotification(
+                notificationId = notificationId,
+                userId = userId,
+                isRead = false
+            )
+            firestore.collection(Constants.COLLECTION_USER_NOTIFICATIONS)
+                .add(userNotif)
+                .await()
         }
     }
 }
