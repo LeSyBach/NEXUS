@@ -1,15 +1,22 @@
 package com.example.nexus.feature_call.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,7 +28,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -40,7 +46,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -51,6 +56,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -72,10 +78,13 @@ import org.webrtc.EglBase
 import org.webrtc.RendererCommon
 import org.webrtc.SurfaceViewRenderer
 import kotlin.math.roundToInt
+import android.graphics.Outline
+import android.view.View
+import android.view.ViewOutlineProvider
 
 // Messenger-style dark gradient
 private val callGradient = Brush.verticalGradient(
-    listOf(Color(0xFF1A1A2E), Color(0xFF16213E), Color(0xFF0F3460))
+    listOf(Color(0xFF1E1E2A), Color(0xFF12121A), Color(0xFF0A0A0F))
 )
 
 @Composable
@@ -96,9 +105,6 @@ fun OngoingCallScreen(
     viewModel: CallViewModel? = null,
     onNavigateBack: () -> Unit
 ) {
-    val nc = MaterialTheme.nexusColors
-
-    // Load signal from RTDB if not already loaded (e.g. when coming from IncomingCallScreen)
     val signal = viewModel?.currentSignal?.collectAsState()?.value
     LaunchedEffect(callId) {
         if (signal == null || signal.callId != callId) {
@@ -113,7 +119,6 @@ fun OngoingCallScreen(
     val callState by viewModel?.callState?.collectAsState() ?: rememberStaticState(CallState.IDLE)
     val currentUserId = viewModel?.currentUserId
 
-    // Determine the other person based on who initiated the call
     val isCaller = signal?.callerId == currentUserId
     val displayName = if (isCaller) {
         signal?.receiverName?.ifEmpty { null } ?: "Người dùng"
@@ -125,18 +130,26 @@ fun OngoingCallScreen(
     val isVideo = callType == "video"
     val isConnected = callState == CallState.CONNECTED
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    var showControls by remember { mutableStateOf(true) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { if (isVideo) showControls = !showControls }
+    ) {
         if (isVideo) {
             // ─── VIDEO CALL ───
             val remoteVideoTrack = viewModel?.remoteVideoTrack?.collectAsState()?.value
             val localTrack = viewModel?.localVideoTrack?.collectAsState()?.value
             val eglContext = viewModel?.eglContext
 
-            // Remote video full screen
-            val currentRemote = remoteVideoTrack
-            if (currentRemote != null && eglContext != null) {
+            // Remote video
+            if (remoteVideoTrack != null && eglContext != null) {
                 RemoteVideoRenderer(
-                    videoTrack = currentRemote,
+                    videoTrack = remoteVideoTrack,
                     eglContext = eglContext,
                     modifier = Modifier.fillMaxSize()
                 )
@@ -150,68 +163,81 @@ fun OngoingCallScreen(
                 Box(modifier = Modifier.fillMaxSize().background(Color.Black))
             }
 
-            // Dark overlay on top for name/duration
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(120.dp)
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color.Black.copy(alpha = 0.6f), Color.Transparent)
-                        )
-                    )
-            )
-
-            // Top: name + duration
-            Column(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 48.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+            // Top Overlay & Info
+            AnimatedVisibility(
+                visible = showControls,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.align(Alignment.TopCenter)
             ) {
-                Text(
-                    text = displayName,
-                    color = Color.White,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                if (isConnected) {
-                    Text(
-                        text = viewModel?.formatDuration(callDuration) ?: "00:00",
-                        color = Color.White.copy(alpha = 0.7f),
-                        fontSize = 16.sp
-                    )
-                } else {
-                    Text(
-                        text = "Đang kết nối...",
-                        color = Color.White.copy(alpha = 0.5f),
-                        fontSize = 14.sp
-                    )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(140.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.Black.copy(alpha = 0.5f), Color.Transparent)
+                            )
+                        )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 48.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = displayName,
+                            color = Color.White,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        if (isConnected) {
+                            Text(
+                                text = viewModel?.formatDuration(callDuration) ?: "00:00",
+                                color = Color.White.copy(alpha = 0.8f),
+                                fontSize = 15.sp
+                            )
+                        } else {
+                            Text(
+                                text = "Đang kết nối...",
+                                color = Color.White.copy(alpha = 0.6f),
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
                 }
             }
 
-            // Draggable local video preview (PiP)
-            if (currentRemote != null && localTrack != null && eglContext != null) {
+            // PiP Video (Always visible)
+            if (remoteVideoTrack != null && localTrack != null && eglContext != null) {
                 DraggableLocalPreview(
                     videoTrack = localTrack,
                     eglContext = eglContext
                 )
             }
 
-            // Bottom controls
-            VideoCallControls(
+            // Bottom Controls Floating Island
+            AnimatedVisibility(
+                visible = showControls,
+                enter = fadeIn(),
+                exit = fadeOut(),
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 48.dp),
-                isMuted = isMuted,
-                isSpeakerOn = isSpeakerOn,
-                isVideoEnabled = isVideoEnabled,
-                onToggleMute = { viewModel?.toggleMute() },
-                onToggleSpeaker = { viewModel?.toggleSpeaker() },
-                onToggleVideo = { viewModel?.toggleVideo() },
-                onEndCall = { viewModel?.endCall() }
-            )
+                    .padding(bottom = 64.dp) // Tránh gesture bar
+            ) {
+                VideoCallControls(
+                    isMuted = isMuted,
+                    isSpeakerOn = isSpeakerOn,
+                    isVideoEnabled = isVideoEnabled,
+                    onToggleMute = { viewModel?.toggleMute() },
+                    onToggleSpeaker = { viewModel?.toggleSpeaker() },
+                    onToggleVideo = { viewModel?.toggleVideo() },
+                    onFlipCamera = { viewModel?.flipCamera() },
+                    onEndCall = { viewModel?.endCall() }
+                )
+            }
         } else {
             // ─── VOICE CALL ───
             Box(modifier = Modifier.fillMaxSize().background(callGradient))
@@ -224,22 +250,23 @@ fun OngoingCallScreen(
             ) {
                 Spacer(modifier = Modifier.weight(1f))
 
-                // Avatar with subtle border
+                // Avatar lớn hơn, đổ bóng sâu
                 Box(
                     modifier = Modifier
-                        .size(128.dp)
+                        .size(160.dp)
+                        .shadow(16.dp, CircleShape)
                         .clip(CircleShape)
-                        .border(3.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+                        .border(1.5.dp, Color.White.copy(alpha = 0.2f), CircleShape)
                 ) {
-                    AvatarCircle(initial = initial, size = 128, avatarUrl = avatarUrl?.ifEmpty { null })
+                    AvatarCircle(initial = initial, size = 160, avatarUrl = avatarUrl?.ifEmpty { null })
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(32.dp))
 
                 Text(
                     text = displayName,
                     color = Color.White,
-                    fontSize = 26.sp,
+                    fontSize = 28.sp,
                     fontWeight = FontWeight.Bold
                 )
 
@@ -248,8 +275,9 @@ fun OngoingCallScreen(
                 if (isConnected) {
                     Text(
                         text = viewModel?.formatDuration(callDuration) ?: "00:00",
-                        color = Color.White.copy(alpha = 0.7f),
-                        fontSize = 18.sp
+                        color = Color.White.copy(alpha = 0.8f),
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Medium
                     )
                 } else {
                     Text(
@@ -259,7 +287,7 @@ fun OngoingCallScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
                     text = "Cuộc gọi thoại",
@@ -269,10 +297,10 @@ fun OngoingCallScreen(
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                // Controls
+                // Voice Call Controls
                 Row(
-                    modifier = Modifier.padding(bottom = 48.dp),
-                    horizontalArrangement = Arrangement.spacedBy(24.dp),
+                    modifier = Modifier.padding(bottom = 64.dp),
+                    horizontalArrangement = Arrangement.spacedBy(28.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     CallControlButton(
@@ -281,10 +309,11 @@ fun OngoingCallScreen(
                                 if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
                                 contentDescription = null,
                                 tint = Color.White,
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(26.dp)
                             )
                         },
                         backgroundColor = Color.White.copy(alpha = 0.15f),
+                        size = 60,
                         onClick = { viewModel?.toggleMute() }
                     )
                     CallControlButton(
@@ -293,10 +322,11 @@ fun OngoingCallScreen(
                                 if (isSpeakerOn) Icons.AutoMirrored.Filled.VolumeUp else Icons.Default.VolumeOff,
                                 contentDescription = null,
                                 tint = Color.White,
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(26.dp)
                             )
                         },
                         backgroundColor = Color.White.copy(alpha = 0.15f),
+                        size = 60,
                         onClick = { viewModel?.toggleSpeaker() }
                     )
                     CallControlButton(
@@ -305,11 +335,11 @@ fun OngoingCallScreen(
                                 Icons.Default.CallEnd,
                                 contentDescription = null,
                                 tint = Color.White,
-                                modifier = Modifier.size(28.dp)
+                                modifier = Modifier.size(32.dp)
                             )
                         },
                         backgroundColor = Color(0xFFEF4444),
-                        size = 64,
+                        size = 72, // Nút End Call lớn
                         onClick = { viewModel?.endCall() }
                     )
                 }
@@ -327,30 +357,27 @@ private fun DraggableLocalPreview(
     val config = LocalConfiguration.current
     val screenWidthPx = with(density) { config.screenWidthDp.dp.toPx() }
     val screenHeightPx = with(density) { config.screenHeightDp.dp.toPx() }
-    val previewWidthPx = with(density) { 110.dp.toPx() }
-    val previewHeightPx = with(density) { 146.dp.toPx() }
 
-    // Start at bottom-right corner
+    // Tỷ lệ 9:16 chuẩn
+    val previewWidthPx = with(density) { 100.dp.toPx() }
+    val previewHeightPx = with(density) { 170.dp.toPx() }
+
     var offsetX by remember { mutableFloatStateOf(screenWidthPx - previewWidthPx - with(density) { 16.dp.toPx() }) }
-    var offsetY by remember { mutableFloatStateOf(screenHeightPx - previewHeightPx - with(density) { 140.dp.toPx() }) }
+    var offsetY by remember { mutableFloatStateOf(screenHeightPx - previewHeightPx - with(density) { 160.dp.toPx() }) }
 
     Box(
         modifier = Modifier
             .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
-            .size(110.dp, 146.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .border(2.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+            .size(100.dp, 170.dp)
+            // Đổ bóng góc vuông
+            .shadow(12.dp, androidx.compose.ui.graphics.RectangleShape)
+            // Viền góc vuông
+            .border(1.5.dp, Color.White.copy(alpha = 0.4f), androidx.compose.ui.graphics.RectangleShape)
             .pointerInput(Unit) {
                 detectDragGestures { change, dragAmount ->
                     change.consume()
-                    offsetX = (offsetX + dragAmount.x).coerceIn(
-                        0f,
-                        screenWidthPx - previewWidthPx
-                    )
-                    offsetY = (offsetY + dragAmount.y).coerceIn(
-                        0f,
-                        screenHeightPx - previewHeightPx
-                    )
+                    offsetX = (offsetX + dragAmount.x).coerceIn(0f, screenWidthPx - previewWidthPx)
+                    offsetY = (offsetY + dragAmount.y).coerceIn(0f, screenHeightPx - previewHeightPx)
                 }
             }
     ) {
@@ -371,60 +398,39 @@ private fun VideoCallControls(
     onToggleMute: () -> Unit,
     onToggleSpeaker: () -> Unit,
     onToggleVideo: () -> Unit,
+    onFlipCamera: () -> Unit,
     onEndCall: () -> Unit
 ) {
+    // Floating Island style
     Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(20.dp),
+        modifier = modifier
+            .background(Color(0xFF1E1E1E).copy(alpha = 0.75f), RoundedCornerShape(36.dp))
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         CallControlButton(
-            icon = {
-                Icon(
-                    if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(24.dp)
-                )
-            },
-            backgroundColor = Color.White.copy(alpha = 0.2f),
-            onClick = onToggleMute
+            icon = { Icon(Icons.Default.FlipCameraAndroid, null, tint = Color.White, modifier = Modifier.size(24.dp)) },
+            backgroundColor = Color.White.copy(alpha = 0.15f),
+            size = 52,
+            onClick = onFlipCamera
         )
         CallControlButton(
-            icon = {
-                Icon(
-                    if (isSpeakerOn) Icons.AutoMirrored.Filled.VolumeUp else Icons.Default.VolumeOff,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(24.dp)
-                )
-            },
-            backgroundColor = Color.White.copy(alpha = 0.2f),
-            onClick = onToggleSpeaker
-        )
-        CallControlButton(
-            icon = {
-                Icon(
-                    if (isVideoEnabled) Icons.Default.Videocam else Icons.Default.VideocamOff,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(24.dp)
-                )
-            },
-            backgroundColor = Color.White.copy(alpha = 0.2f),
+            icon = { Icon(if (isVideoEnabled) Icons.Default.Videocam else Icons.Default.VideocamOff, null, tint = Color.White, modifier = Modifier.size(24.dp)) },
+            backgroundColor = Color.White.copy(alpha = 0.15f),
+            size = 52,
             onClick = onToggleVideo
         )
         CallControlButton(
-            icon = {
-                Icon(
-                    Icons.Default.CallEnd,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(28.dp)
-                )
-            },
+            icon = { Icon(if (isMuted) Icons.Default.MicOff else Icons.Default.Mic, null, tint = Color.White, modifier = Modifier.size(24.dp)) },
+            backgroundColor = Color.White.copy(alpha = 0.15f),
+            size = 52,
+            onClick = onToggleMute
+        )
+        CallControlButton(
+            icon = { Icon(Icons.Default.CallEnd, null, tint = Color.White, modifier = Modifier.size(28.dp)) },
             backgroundColor = Color(0xFFEF4444),
-            size = 64,
+            size = 64, // Nút End Call lớn nhất
             onClick = onEndCall
         )
     }
@@ -437,15 +443,11 @@ fun IncomingCallScreen(
     onNavigateBack: () -> Unit,
     onCallAccepted: (callType: String) -> Unit
 ) {
-    val nc = MaterialTheme.nexusColors
-
-    // Always load signal from RTDB when screen opens
     LaunchedEffect(callId) {
         viewModel?.loadCallSignal(callId)
     }
 
     val signal = viewModel?.currentSignal?.collectAsState()?.value
-
     val displayName = signal?.callerName?.ifEmpty { null } ?: "Đang tải..."
     val avatarUrl = signal?.callerAvatar?.ifEmpty { null }
     val initial = displayName.firstOrNull()?.uppercase() ?: "?"
@@ -468,88 +470,78 @@ fun IncomingCallScreen(
         }
     }
 
+    // Ripple Pulse mượt mà chuẩn Messenger
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val scale by infiniteTransition.animateFloat(
+    val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1f,
-        targetValue = 1.12f,
+        targetValue = 1.6f,
         animationSpec = infiniteRepeatable(
-            animation = tween(900, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
+            animation = tween(1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
         ),
-        label = "scale"
+        label = "pulseScale"
+    )
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.6f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "pulseAlpha"
     )
 
     if (showPermissionRationale) {
         AlertDialog(
             onDismissRequest = { showPermissionRationale = false },
             title = { Text("Cần quyền truy cập") },
-            text = {
-                Text(
-                    if (isVideo) "Để thực hiện cuộc gọi video, ứng dụng cần quyền truy cập Micro và Camera."
-                    else "Để thực hiện cuộc gọi, ứng dụng cần quyền truy cập Micro."
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    showPermissionRationale = false
-                    permissions.requestPermissions()
-                }) {
-                    Text("Cấp quyền")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showPermissionRationale = false }) {
-                    Text("Hủy")
-                }
-            }
+            text = { Text(if (isVideo) "Để thực hiện cuộc gọi video, ứng dụng cần quyền truy cập Micro và Camera." else "Để thực hiện cuộc gọi, ứng dụng cần quyền truy cập Micro.") },
+            confirmButton = { TextButton(onClick = { showPermissionRationale = false; permissions.requestPermissions() }) { Text("Cấp quyền") } },
+            dismissButton = { TextButton(onClick = { showPermissionRationale = false }) { Text("Hủy") } }
         )
     }
 
     Box(modifier = Modifier.fillMaxSize().background(callGradient)) {
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 24.dp),
+            modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.weight(1f))
 
-            // Avatar with pulse ring
             Box(contentAlignment = Alignment.Center) {
+                // Sóng Pulse
                 Box(
                     modifier = Modifier
-                        .size(152.dp)
-                        .graphicsLayer {
-                            scaleX = scale
-                            scaleY = scale
-                        }
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.08f))
+                        .size(160.dp)
+                        .graphicsLayer { scaleX = pulseScale; scaleY = pulseScale; alpha = pulseAlpha }
+                        .border(2.dp, Color.White, CircleShape)
                 )
+                // Avatar chính
                 Box(
                     modifier = Modifier
-                        .size(140.dp)
+                        .size(160.dp)
+                        .shadow(16.dp, CircleShape)
                         .clip(CircleShape)
-                        .border(3.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+                        .border(2.dp, Color.White.copy(alpha = 0.15f), CircleShape)
                 ) {
-                    AvatarCircle(initial = initial, size = 140, avatarUrl = avatarUrl)
+                    AvatarCircle(initial = initial, size = 160, avatarUrl = avatarUrl)
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(36.dp))
 
             Text(
                 text = displayName,
                 color = Color.White,
-                fontSize = 28.sp,
+                fontSize = 30.sp,
                 fontWeight = FontWeight.Bold
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = if (isVideo) "Cuộc gọi video đến" else "Cuộc gọi thoại đến",
-                color = Color.White.copy(alpha = 0.5f),
+                text = if (isVideo) "Cuộc gọi video đến..." else "Cuộc gọi thoại đến...",
+                color = Color.White.copy(alpha = 0.6f),
                 fontSize = 16.sp
             )
 
@@ -558,64 +550,37 @@ fun IncomingCallScreen(
             // Accept / Reject buttons
             Row(
                 modifier = Modifier.padding(bottom = 64.dp),
-                horizontalArrangement = Arrangement.spacedBy(56.dp),
+                horizontalArrangement = Arrangement.spacedBy(64.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Reject
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(
-                        modifier = Modifier
-                            .size(72.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFFEF4444))
-                            .clickable {
-                                viewModel?.rejectCall()
-                                onNavigateBack()
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Default.CallEnd,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text("Từ chối", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
+                    CallControlButton(
+                        icon = { Icon(Icons.Default.CallEnd, null, tint = Color.White, modifier = Modifier.size(32.dp)) },
+                        backgroundColor = Color(0xFFEF4444),
+                        size = 72,
+                        onClick = { viewModel?.rejectCall(); onNavigateBack() }
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("Từ chối", color = Color.White.copy(alpha = 0.7f), fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 }
 
-                // Accept
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(
-                        modifier = Modifier
-                            .size(72.dp)
-                            .graphicsLayer {
-                                scaleX = scale
-                                scaleY = scale
+                    CallControlButton(
+                        icon = { Icon(Icons.Default.Call, null, tint = Color.White, modifier = Modifier.size(32.dp)) },
+                        backgroundColor = Color(0xFF22C55E),
+                        size = 72,
+                        onClick = {
+                            if (permissions.allGranted) {
+                                viewModel?.acceptCall(callId)
+                                onCallAccepted(if (isVideo) "video" else "voice")
+                            } else {
+                                pendingAccept = true
+                                permissions.requestPermissions()
                             }
-                            .clip(CircleShape)
-                            .background(Color(0xFF22C55E))
-                            .clickable {
-                                if (permissions.allGranted) {
-                                    viewModel?.acceptCall(callId)
-                                    onCallAccepted(if (isVideo) "video" else "voice")
-                                } else {
-                                    pendingAccept = true
-                                    permissions.requestPermissions()
-                                }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Default.Call,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text("Chấp nhận", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("Chấp nhận", color = Color.White.copy(alpha = 0.7f), fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 }
             }
         }
@@ -627,9 +592,7 @@ fun OutgoingCallScreen(
     viewModel: CallViewModel? = null,
     onNavigateBack: () -> Unit
 ) {
-    val nc = MaterialTheme.nexusColors
     val signal = viewModel?.currentSignal?.collectAsState()?.value
-
     val displayName = signal?.receiverName?.ifEmpty { null } ?: "Người dùng"
     val avatarUrl = signal?.receiverAvatar?.ifEmpty { null }
     val initial = displayName.firstOrNull()?.uppercase() ?: "?"
@@ -638,143 +601,71 @@ fun OutgoingCallScreen(
     val eglContext = viewModel?.eglContext
 
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val alpha by infiniteTransition.animateFloat(
-        initialValue = 0.4f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(800, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "alpha"
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1f, targetValue = 1.6f,
+        animationSpec = infiniteRepeatable(tween(1500, easing = FastOutSlowInEasing), RepeatMode.Restart), label = "pulseScale"
+    )
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.6f, targetValue = 0f,
+        animationSpec = infiniteRepeatable(tween(1500, easing = FastOutSlowInEasing), RepeatMode.Restart), label = "pulseAlpha"
     )
 
     Box(modifier = Modifier.fillMaxSize()) {
         if (isVideo) {
-            // Video: show local preview as background
             if (localTrack != null && eglContext != null) {
-                LocalVideoRenderer(
-                    videoTrack = localTrack,
-                    eglContext = eglContext,
-                    modifier = Modifier.fillMaxSize()
-                )
+                LocalVideoRenderer(videoTrack = localTrack, eglContext = eglContext, modifier = Modifier.fillMaxSize())
             } else {
                 Box(modifier = Modifier.fillMaxSize().background(Color.Black))
             }
 
-            // Dark overlay on top
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(140.dp)
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color.Black.copy(alpha = 0.7f), Color.Transparent)
-                        )
-                    )
-            )
+            Box(modifier = Modifier.fillMaxWidth().height(160.dp).background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.6f), Color.Transparent))))
 
             Column(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 48.dp),
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 56.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(
-                    text = displayName,
-                    color = Color.White,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = "Đang gọi...",
-                    color = Color.White.copy(alpha = 0.7f),
-                    fontSize = 16.sp,
-                    modifier = Modifier.graphicsLayer { this.alpha = alpha }
-                )
+                Text(text = displayName, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(text = "Đang gọi...", color = Color.White.copy(alpha = 0.8f), fontSize = 16.sp)
             }
 
-            // Cancel button
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 64.dp)
-                    .size(72.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFFEF4444))
-                    .clickable {
-                        viewModel?.rejectCall()
-                        onNavigateBack()
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Default.CallEnd,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(32.dp)
-                )
-            }
+            CallControlButton(
+                icon = { Icon(Icons.Default.CallEnd, null, tint = Color.White, modifier = Modifier.size(32.dp)) },
+                backgroundColor = Color(0xFFEF4444),
+                size = 72,
+                onClick = { viewModel?.rejectCall(); onNavigateBack() },
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 64.dp)
+            )
         } else {
-            // Voice call outgoing
             Box(modifier = Modifier.fillMaxSize().background(callGradient))
 
             Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 24.dp),
+                modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Spacer(modifier = Modifier.weight(1f))
 
-                Box(
-                    modifier = Modifier
-                        .size(128.dp)
-                        .clip(CircleShape)
-                        .border(3.dp, Color.White.copy(alpha = 0.15f), CircleShape)
-                ) {
-                    AvatarCircle(initial = initial, size = 128, avatarUrl = avatarUrl)
+                Box(contentAlignment = Alignment.Center) {
+                    Box(modifier = Modifier.size(160.dp).graphicsLayer { scaleX = pulseScale; scaleY = pulseScale; alpha = pulseAlpha }.border(2.dp, Color.White, CircleShape))
+                    Box(modifier = Modifier.size(160.dp).shadow(16.dp, CircleShape).clip(CircleShape).border(2.dp, Color.White.copy(alpha = 0.15f), CircleShape)) {
+                        AvatarCircle(initial = initial, size = 160, avatarUrl = avatarUrl)
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
-
-                Text(
-                    text = displayName,
-                    color = Color.White,
-                    fontSize = 26.sp,
-                    fontWeight = FontWeight.Bold
-                )
-
+                Spacer(modifier = Modifier.height(36.dp))
+                Text(text = displayName, color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(12.dp))
-
-                Text(
-                    text = "Đang gọi...",
-                    color = Color.White.copy(alpha = 0.6f),
-                    fontSize = 16.sp,
-                    modifier = Modifier.graphicsLayer { this.alpha = alpha }
-                )
+                Text(text = "Đang gọi...", color = Color.White.copy(alpha = 0.6f), fontSize = 16.sp)
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                Box(
-                    modifier = Modifier
-                        .padding(bottom = 64.dp)
-                        .size(72.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFFEF4444))
-                        .clickable {
-                            viewModel?.rejectCall()
-                            onNavigateBack()
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Default.CallEnd,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(32.dp)
-                    )
-                }
+                CallControlButton(
+                    icon = { Icon(Icons.Default.CallEnd, null, tint = Color.White, modifier = Modifier.size(32.dp)) },
+                    backgroundColor = Color(0xFFEF4444),
+                    size = 72,
+                    onClick = { viewModel?.rejectCall(); onNavigateBack() },
+                    modifier = Modifier.padding(bottom = 64.dp)
+                )
             }
         }
     }
@@ -791,36 +682,15 @@ fun CallRouter(
 
     when (callState) {
         CallState.OUTGOING -> OutgoingCallScreen(viewModel = viewModel, onNavigateBack = onNavigateBack)
-        CallState.INCOMING -> IncomingCallScreen(
-            callId = callId,
-            viewModel = viewModel,
-            onNavigateBack = onNavigateBack,
-            onCallAccepted = { _ -> }
-        )
-        CallState.CONNECTED -> OngoingCallScreen(
-            callId = callId,
-            callType = callType,
-            viewModel = viewModel,
-            onNavigateBack = onNavigateBack
-        )
+        CallState.INCOMING -> IncomingCallScreen(callId = callId, viewModel = viewModel, onNavigateBack = onNavigateBack, onCallAccepted = { _ -> })
+        CallState.CONNECTED -> OngoingCallScreen(callId = callId, callType = callType, viewModel = viewModel, onNavigateBack = onNavigateBack)
         CallState.ENDED -> {
-            LaunchedEffect(Unit) {
-                delay(1500)
-                viewModel?.resetState()
-                onNavigateBack()
-            }
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(callGradient),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("Cuộc gọi đã kết thúc", color = Color.White.copy(alpha = 0.5f), fontSize = 18.sp)
+            LaunchedEffect(Unit) { delay(1500); viewModel?.resetState(); onNavigateBack() }
+            Box(modifier = Modifier.fillMaxSize().background(callGradient), contentAlignment = Alignment.Center) {
+                Text("Cuộc gọi đã kết thúc", color = Color.White.copy(alpha = 0.6f), fontSize = 18.sp, fontWeight = FontWeight.Medium)
             }
         }
-        CallState.IDLE -> {
-            LaunchedEffect(Unit) { onNavigateBack() }
-        }
+        CallState.IDLE -> LaunchedEffect(Unit) { onNavigateBack() }
     }
 }
 
@@ -828,26 +698,13 @@ fun CallRouter(
 private fun AvatarCircle(initial: String, size: Int, avatarUrl: String? = null) {
     val nc = MaterialTheme.nexusColors
     Box(
-        modifier = Modifier
-            .size(size.dp)
-            .clip(CircleShape)
-            .background(nc.avatarBg),
+        modifier = Modifier.size(size.dp).clip(CircleShape).background(nc.avatarBg),
         contentAlignment = Alignment.Center
     ) {
         if (!avatarUrl.isNullOrEmpty()) {
-            AsyncImage(
-                model = avatarUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
+            AsyncImage(model = avatarUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         } else {
-            Text(
-                text = initial,
-                color = nc.textPrimary,
-                fontSize = (size / 3).sp,
-                fontWeight = FontWeight.Bold
-            )
+            Text(text = initial, color = nc.textPrimary, fontSize = (size / 2.5).sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -857,14 +714,30 @@ private fun CallControlButton(
     icon: @Composable () -> Unit,
     backgroundColor: Color,
     size: Int = 56,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
+    // Hiệu ứng scale nhún nhẹ khi chạm vào giống Messenger
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.88f else 1f,
+        animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing),
+        label = "btnScale"
+    )
+
     Box(
-        modifier = Modifier
+        modifier = modifier
+            .graphicsLayer { scaleX = scale; scaleY = scale }
             .size(size.dp)
+            .shadow(if (isPressed) 2.dp else 8.dp, CircleShape, ambientColor = Color.Black, spotColor = Color.Black)
             .clip(CircleShape)
             .background(backgroundColor)
-            .clickable { onClick() },
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick
+            ),
         contentAlignment = Alignment.Center
     ) {
         icon()
@@ -872,15 +745,10 @@ private fun CallControlButton(
 }
 
 @Composable
-private fun <T> rememberStaticState(value: T) =
-    remember { mutableStateOf(value) }
+private fun <T> rememberStaticState(value: T) = remember { mutableStateOf(value) }
 
 @Composable
-fun RemoteVideoRenderer(
-    videoTrack: org.webrtc.VideoTrack,
-    eglContext: EglBase.Context,
-    modifier: Modifier = Modifier
-) {
+fun RemoteVideoRenderer(videoTrack: org.webrtc.VideoTrack, eglContext: EglBase.Context, modifier: Modifier = Modifier) {
     AndroidView(
         factory = { ctx ->
             SurfaceViewRenderer(ctx).apply {
@@ -890,9 +758,7 @@ fun RemoteVideoRenderer(
                 videoTrack.addSink(this)
             }
         },
-        update = { view ->
-            videoTrack.addSink(view)
-        },
+        update = { view -> videoTrack.addSink(view) },
         modifier = modifier
     )
 }

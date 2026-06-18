@@ -271,6 +271,10 @@ class CallViewModel @Inject constructor(
         webRtcClient.setVideoEnabled(_isVideoEnabled.value)
     }
 
+    fun flipCamera() {
+        webRtcClient.flipCamera()
+    }
+
     // ════════════════════════════════════════════════════════════════
     // CALL STATUS OBSERVER
     // ════════════════════════════════════════════════════════════════

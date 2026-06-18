@@ -189,6 +189,18 @@ class WebRtcClient(
         Log.d(TAG, "Speaker: $enabled")
     }
 
+    fun flipCamera() {
+        val capturer = videoCapturer as? CameraVideoCapturer ?: return
+        capturer.switchCamera(object : CameraVideoCapturer.CameraSwitchHandler {
+            override fun onCameraSwitchDone(isFrontCamera: Boolean) {
+                Log.d(TAG, "Camera switched: front=$isFrontCamera")
+            }
+            override fun onCameraSwitchError(errorDescription: String) {
+                Log.e(TAG, "Camera switch error: $errorDescription")
+            }
+        })
+    }
+
     fun release() {
         if (peerConnection == null) {
             Log.d(TAG, "Already released, skipping")
