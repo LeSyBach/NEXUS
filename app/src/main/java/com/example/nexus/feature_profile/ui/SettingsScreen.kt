@@ -41,6 +41,13 @@ import com.example.nexus.ui.theme.nexusColors
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.platform.LocalContext
+import androidx.credentials.CredentialManager
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialException
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,6 +63,62 @@ fun SettingsScreen(
     val switchState by viewModel.switchAccountState.collectAsState()
     val deleteState by viewModel.deleteAccountState.collectAsState()
     val nc = MaterialTheme.nexusColors
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Google Sign-In via Credential Manager
+    val credentialManager = remember { CredentialManager.create(context) }
+    val serverClientId = remember { context.getString(com.example.nexus.R.string.web_client_id) }
+
+    fun launchGoogleSignInForSwitch() {
+        val googleIdOption = GetGoogleIdOption.Builder()
+            .setFilterByAuthorizedAccounts(true)  // Only show accounts previously authorized with this app
+            .setServerClientId(serverClientId)
+            .setAutoSelectEnabled(true)            // Auto-select if only one authorized account
+            .build()
+
+        val request = GetCredentialRequest.Builder()
+            .addCredentialOption(googleIdOption)
+            .build()
+
+        scope.launch {
+            try {
+                val result = credentialManager.getCredential(
+                    context = context,
+                    request = request
+                )
+                val credential = result.credential
+                val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
+                val idToken = googleIdTokenCredential.idToken
+                viewModel.switchWithGoogle(idToken)
+            } catch (e: GetCredentialException) {
+                // If no authorized accounts found, fall back to showing all accounts
+                try {
+                    val fallbackOption = GetGoogleIdOption.Builder()
+                        .setFilterByAuthorizedAccounts(false)
+                        .setServerClientId(serverClientId)
+                        .setAutoSelectEnabled(true)
+                        .build()
+                    val fallbackRequest = GetCredentialRequest.Builder()
+                        .addCredentialOption(fallbackOption)
+                        .build()
+                    val fallbackResult = credentialManager.getCredential(
+                        context = context,
+                        request = fallbackRequest
+                    )
+                    val credential = fallbackResult.credential
+                    val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
+                    val idToken = googleIdTokenCredential.idToken
+                    viewModel.switchWithGoogle(idToken)
+                } catch (e2: Exception) {
+                    snackbarHostState.showSnackbar("Chuyển tài khoản Google bị hủy")
+                }
+            } catch (e: Exception) {
+                snackbarHostState.showSnackbar(e.message ?: "Chuyển tài khoản thất bại")
+            }
+        }
+    }
 
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showLogoutDialog by remember { mutableStateOf(false) }
@@ -130,6 +193,7 @@ fun SettingsScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Cài đặt", color = nc.textPrimary, fontWeight = FontWeight.Bold) },
@@ -267,7 +331,13 @@ fun SettingsScreen(
                         isCurrent = account.email == uiState.currentAccountEmail,
                         isSwitching = switchState is Resource.Loading,
                         onSwitch = {
-                            viewModel.switchAccount(account.email, account.encryptedPassword)
+                            if (account.encryptedPassword.isEmpty()) {
+                                // Google account → trigger Google sign-in flow
+                                launchGoogleSignInForSwitch()
+                            } else {
+                                // Email/password account → direct login
+                                viewModel.switchAccount(account.email, account.encryptedPassword)
+                            }
                         },
                         onRemove = {
                             viewModel.removeAccount(account.email)
@@ -479,7 +549,24 @@ private fun AccountItem(
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Medium
             )
-            Text(account.email, color = nc.textSecondary, fontSize = 12.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(account.email, color = nc.textSecondary, fontSize = 12.sp)
+                if (account.encryptedPassword.isEmpty()) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        "Google",
+                        color = Color(0xFF4285F4),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .background(
+                                Color(0xFF4285F4).copy(alpha = 0.1f),
+                                RoundedCornerShape(4.dp)
+                            )
+                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                    )
+                }
+            }
         }
 
         if (isCurrent) {

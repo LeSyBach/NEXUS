@@ -24,7 +24,8 @@ import javax.inject.Singleton
 class AuthRepository @Inject constructor(
     private val authService: AuthService,
     private val firestoreService: FirestoreService,
-    private val accountManager: AccountManager
+    private val accountManager: AccountManager,
+    private val adminRepository: AdminRepository
 ) {
     val currentUser: FirebaseUser?
         get() = authService.currentUser
@@ -113,6 +114,8 @@ class AuthRepository @Inject constructor(
         } catch (e: Exception) {
             Log.e("AuthRepository", "Error clearing FCM token on logout", e)
         }
+        // Reset notification state before signing out
+        adminRepository.reset()
         accountManager.setCurrentAccountEmail(null)
         authService.signOut()
     }

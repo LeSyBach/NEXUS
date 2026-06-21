@@ -1,10 +1,13 @@
 package com.example.nexus.data.repository
 
+import android.content.Context
+import android.content.SharedPreferences
 import com.example.nexus.data.firebase.AuthService
 import com.example.nexus.data.firebase.FirestoreService
 import com.example.nexus.data.model.Feedback
 import com.example.nexus.data.model.SystemNotification
 import com.example.nexus.data.model.UserNotification
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -18,9 +21,17 @@ import javax.inject.Singleton
 @Singleton
 class AdminRepository @Inject constructor(
     private val firestoreService: FirestoreService,
-    private val authService: AuthService
+    private val authService: AuthService,
+    @ApplicationContext private val context: Context
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // Local persistence for read notification IDs (survives app restart)
+    private val prefs: SharedPreferences =
+        context.getSharedPreferences("nexus_read_notifs", Context.MODE_PRIVATE)
+
+    // Current user ID for per-account SharedPreferences key
+    private var currentUserId: String? = null
 
     // Shared unread count
     private val _unreadNotificationCount = MutableStateFlow(0)
@@ -36,17 +47,35 @@ class AdminRepository @Inject constructor(
 
     private var isObserving = false
 
+    /** SharedPreferences key per user: "read_ids_<userId>" */
+    private fun readIdsKey(userId: String) = "read_ids_$userId"
+
     fun startObservingIfNeeded() {
         if (isObserving) return
         val userId = authService.currentUserId ?: return
         isObserving = true
+        currentUserId = userId
 
-        // Observe user notifications for read status
+        // Load locally persisted read IDs for THIS user (instant, survives restart)
+        val localReadIds = prefs.getStringSet(readIdsKey(userId), emptySet()) ?: emptySet()
+        _readNotificationIds.value = localReadIds
+
+        // Observe user notifications for read status from Firestore
         scope.launch {
             firestoreService.observeUserNotifications(userId).collect { userNotifs ->
-                val readIds = userNotifs.filter { it.isRead }.map { it.notificationId }.toSet()
-                _readNotificationIds.value = readIds
-                _unreadNotificationCount.value = userNotifs.count { !it.isRead }
+                // Deduplicate by notificationId: if ANY doc for a notification is read,
+                // treat it as read. This handles legacy docs with auto-generated IDs.
+                val deduplicated = userNotifs.groupBy { it.notificationId }
+                    .mapValues { (_, docs) -> docs.any { it.isRead } }
+                val firestoreReadIds = deduplicated.filter { it.value }.keys.toSet()
+
+                // Merge: local + Firestore (never lose a read status)
+                val mergedReadIds = localReadIds + firestoreReadIds
+                _readNotificationIds.value = mergedReadIds
+                _unreadNotificationCount.value = _systemNotifications.value.count { it.id !in mergedReadIds }
+
+                // Persist merged result locally for THIS user
+                prefs.edit().putStringSet(readIdsKey(userId), mergedReadIds).apply()
             }
         }
 
@@ -54,18 +83,34 @@ class AdminRepository @Inject constructor(
         scope.launch {
             firestoreService.observeSystemNotifications().collect { notifications ->
                 _systemNotifications.value = notifications
+                // Recalculate unread count when notifications list changes
+                _unreadNotificationCount.value = notifications.count { it.id !in _readNotificationIds.value }
             }
         }
     }
 
     fun markAsReadLocally(notificationId: String) {
-        _readNotificationIds.value = _readNotificationIds.value + notificationId
+        val updated = _readNotificationIds.value + notificationId
+        _readNotificationIds.value = updated
         _unreadNotificationCount.value = (_unreadNotificationCount.value - 1).coerceAtLeast(0)
+        // Persist locally for THIS user
+        currentUserId?.let { uid ->
+            prefs.edit().putStringSet(readIdsKey(uid), updated).apply()
+        }
     }
 
     fun revertRead(notificationId: String) {
         _readNotificationIds.value = _readNotificationIds.value - notificationId
         _unreadNotificationCount.value = _unreadNotificationCount.value + 1
+    }
+
+    /** Reset state when logging out or switching accounts */
+    fun reset() {
+        isObserving = false
+        currentUserId = null
+        _readNotificationIds.value = emptySet()
+        _unreadNotificationCount.value = 0
+        _systemNotifications.value = emptyList()
     }
 
     suspend fun submitFeedback(type: String, subject: String, content: String): Result<Unit> {

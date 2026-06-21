@@ -30,6 +30,7 @@ import com.google.firebase.messaging.RemoteMessage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -272,18 +273,25 @@ class NexusMessagingService : FirebaseMessagingService() {
         val notificationId = data["notificationId"] ?: ""
 
         // Store in user_notifications for read tracking
+        // Use predictable document ID to prevent duplicates and avoid needing composite index
         val userId = FirebaseAuth.getInstance().currentUser?.uid
         if (userId != null && notificationId.isNotEmpty()) {
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    FirebaseFirestore.getInstance()
+                    val docId = "${notificationId}_${userId}"
+                    val docRef = FirebaseFirestore.getInstance()
                         .collection(Constants.COLLECTION_USER_NOTIFICATIONS)
-                        .add(mapOf(
+                        .document(docId)
+                    // Only create if not exists — don't overwrite existing read status
+                    val snapshot = docRef.get().await()
+                    if (!snapshot.exists()) {
+                        docRef.set(mapOf(
                             "notificationId" to notificationId,
                             "userId" to userId,
                             "isRead" to false,
                             "createdAt" to com.google.firebase.Timestamp.now()
-                        ))
+                        )).await()
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to create user notification", e)
                 }

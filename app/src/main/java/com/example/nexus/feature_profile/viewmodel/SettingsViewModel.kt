@@ -96,6 +96,20 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun switchWithGoogle(idToken: String) {
+        viewModelScope.launch {
+            _switchAccountState.value = Resource.Loading
+            try {
+                authRepository.logout()
+                authRepository.loginWithGoogle(idToken)
+                _savedAccounts.value = accountManager.getSavedAccounts()
+                _switchAccountState.value = Resource.Success(Unit)
+            } catch (e: Exception) {
+                _switchAccountState.value = Resource.Error(e.message ?: "Chuyển tài khoản thất bại")
+            }
+        }
+    }
+
     fun removeAccount(email: String) {
         accountManager.removeAccount(email)
         _savedAccounts.value = accountManager.getSavedAccounts()

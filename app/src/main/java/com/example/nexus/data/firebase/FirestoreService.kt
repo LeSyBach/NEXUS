@@ -1066,45 +1066,42 @@ class FirestoreService @Inject constructor(
         }
     }
 
+    /**
+     * Mark a notification as read for a user.
+     * Uses a predictable document ID ("${notificationId}_${userId}") to avoid
+     * needing a composite index and to prevent duplicate documents.
+     */
     suspend fun markNotificationRead(notificationId: String, userId: String) {
-        val snapshot = firestore.collection(Constants.COLLECTION_USER_NOTIFICATIONS)
-            .whereEqualTo("notificationId", notificationId)
-            .whereEqualTo("userId", userId)
-            .get()
-            .await()
-        if (snapshot.isEmpty) {
-            // Create new document with isRead = true
-            firestore.collection(Constants.COLLECTION_USER_NOTIFICATIONS)
-                .add(mapOf(
-                    "notificationId" to notificationId,
-                    "userId" to userId,
-                    "isRead" to true,
-                    "createdAt" to Timestamp.now()
-                ))
-                .await()
+        val docId = "${notificationId}_${userId}"
+        val docRef = firestore.collection(Constants.COLLECTION_USER_NOTIFICATIONS).document(docId)
+        val snapshot = docRef.get().await()
+        if (snapshot.exists()) {
+            docRef.update("isRead", true).await()
         } else {
-            // Update existing document
-            for (doc in snapshot.documents) {
-                doc.reference.update("isRead", true).await()
-            }
+            docRef.set(mapOf(
+                "notificationId" to notificationId,
+                "userId" to userId,
+                "isRead" to true,
+                "createdAt" to Timestamp.now()
+            )).await()
         }
     }
 
+    /**
+     * Create a user_notification record with isRead=false if it doesn't exist yet.
+     * Uses a predictable document ID to avoid compound queries and duplicates.
+     */
     suspend fun createUserNotification(notificationId: String, userId: String) {
-        val existing = firestore.collection(Constants.COLLECTION_USER_NOTIFICATIONS)
-            .whereEqualTo("notificationId", notificationId)
-            .whereEqualTo("userId", userId)
-            .get()
-            .await()
-        if (existing.isEmpty) {
+        val docId = "${notificationId}_${userId}"
+        val docRef = firestore.collection(Constants.COLLECTION_USER_NOTIFICATIONS).document(docId)
+        val snapshot = docRef.get().await()
+        if (!snapshot.exists()) {
             val userNotif = UserNotification(
                 notificationId = notificationId,
                 userId = userId,
                 isRead = false
             )
-            firestore.collection(Constants.COLLECTION_USER_NOTIFICATIONS)
-                .add(userNotif)
-                .await()
+            docRef.set(userNotif).await()
         }
     }
 }
