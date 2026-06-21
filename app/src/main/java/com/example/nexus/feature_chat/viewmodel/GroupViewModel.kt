@@ -11,6 +11,7 @@ import com.example.nexus.data.model.Group
 import com.example.nexus.data.model.User
 import com.example.nexus.data.repository.ChatRepository
 import com.example.nexus.data.repository.ContactRepository
+import com.example.nexus.data.repository.GroupRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,6 +22,7 @@ import javax.inject.Inject
 @HiltViewModel
 class GroupViewModel @Inject constructor(
     private val chatRepository: ChatRepository,
+    private val groupRepository: GroupRepository,
     private val contactRepository: ContactRepository,
     private val mediaUploader: MediaUploader
 ) : ViewModel() {
@@ -101,7 +103,7 @@ class GroupViewModel @Inject constructor(
                 if (uri != null) {
                     avatarUrl = mediaUploader.upload(context, uri) ?: ""
                 }
-                val result = chatRepository.createGroup(name, avatarUrl, members)
+                val result = groupRepository.createGroup(name, avatarUrl, members)
                 _createGroupState.value = result
             } catch (e: Exception) {
                 _createGroupState.value = Resource.Error(e.message ?: "Lỗi tạo nhóm")
@@ -126,7 +128,7 @@ class GroupViewModel @Inject constructor(
                 val groupId = findGroupId(chatId)
                 if (groupId != null) {
                     viewModelScope.launch {
-                        chatRepository.observeGroup(groupId).collect { group ->
+                        groupRepository.observeGroup(groupId).collect { group ->
                             _group.value = group
                         }
                     }
@@ -186,42 +188,42 @@ class GroupViewModel @Inject constructor(
     fun addMembers(chatId: String, groupId: String, users: List<User>) {
         _operationState.value = Resource.Loading
         viewModelScope.launch {
-            _operationState.value = chatRepository.addGroupMembers(chatId, groupId, users)
+            _operationState.value = groupRepository.addGroupMembers(chatId, groupId, users)
         }
     }
 
     fun removeMember(chatId: String, groupId: String, userId: String, username: String) {
         _operationState.value = Resource.Loading
         viewModelScope.launch {
-            _operationState.value = chatRepository.kickMember(chatId, groupId, userId, username)
+            _operationState.value = groupRepository.kickMember(chatId, groupId, userId, username)
         }
     }
 
     fun promoteToAdmin(chatId: String, groupId: String, userId: String, username: String) {
         _operationState.value = Resource.Loading
         viewModelScope.launch {
-            _operationState.value = chatRepository.promoteToAdmin(chatId, groupId, userId, username)
+            _operationState.value = groupRepository.promoteToAdmin(chatId, groupId, userId, username)
         }
     }
 
     fun demoteAdmin(chatId: String, groupId: String, userId: String, username: String) {
         _operationState.value = Resource.Loading
         viewModelScope.launch {
-            _operationState.value = chatRepository.demoteAdmin(chatId, groupId, userId, username)
+            _operationState.value = groupRepository.demoteAdmin(chatId, groupId, userId, username)
         }
     }
 
     fun leaveGroup(chatId: String, groupId: String) {
         _operationState.value = Resource.Loading
         viewModelScope.launch {
-            _operationState.value = chatRepository.leaveGroup(chatId, groupId)
+            _operationState.value = groupRepository.leaveGroup(chatId, groupId)
         }
     }
 
     fun dissolveGroup(chatId: String, groupId: String) {
         _operationState.value = Resource.Loading
         viewModelScope.launch {
-            _operationState.value = chatRepository.dissolveGroup(chatId, groupId)
+            _operationState.value = groupRepository.dissolveGroup(chatId, groupId)
         }
     }
 
@@ -235,7 +237,7 @@ class GroupViewModel @Inject constructor(
             try {
                 val avatarUrl = mediaUploader.upload(context, uri)
                 if (avatarUrl != null) {
-                    chatRepository.updateGroupAvatar(chatId, groupId, avatarUrl)
+                    groupRepository.updateGroupAvatar(chatId, groupId, avatarUrl)
                     _operationState.value = Resource.Success(Unit)
                 } else {
                     _operationState.value = Resource.Error("Tải ảnh lên thất bại")

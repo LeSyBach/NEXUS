@@ -26,6 +26,8 @@ import com.example.nexus.data.model.ReplyMessage
 import com.example.nexus.data.model.User
 import com.example.nexus.data.repository.ChatRepository
 import com.example.nexus.data.repository.ContactRepository
+import com.example.nexus.data.repository.GroupRepository
+import com.example.nexus.data.repository.StoryRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -66,6 +68,8 @@ sealed class AiSummaryState {
 @HiltViewModel
 class ChatViewModel @Inject constructor(
     private val chatRepository: ChatRepository,
+    private val groupRepository: GroupRepository,
+    private val storyRepository: StoryRepository,
     private val contactRepository: ContactRepository,
     private val mediaUploader: MediaUploader,
     private val voiceRecorderHelper: VoiceRecorderHelper,
@@ -241,7 +245,7 @@ class ChatViewModel @Inject constructor(
 
     private fun loadStories() {
         viewModelScope.launch {
-            chatRepository.observeAllActiveStories().collect { storyList ->
+            storyRepository.observeAllActiveStories().collect { storyList ->
                 val storyMap = mutableMapOf<String, com.example.nexus.data.model.Story>()
                 val noteMap = mutableMapOf<String, com.example.nexus.data.model.Story>()
                 val imageMap = mutableMapOf<String, MutableList<com.example.nexus.data.model.Story>>()
@@ -274,20 +278,20 @@ class ChatViewModel @Inject constructor(
 
     fun postStory(content: String, type: String = "text") {
         viewModelScope.launch {
-            chatRepository.createStory(content, type)
+            storyRepository.createStory(content, type)
         }
     }
 
     fun deleteStory(storyId: String) {
         viewModelScope.launch {
-            chatRepository.deleteStory(storyId)
+            storyRepository.deleteStory(storyId)
         }
     }
 
     fun markStoryAsViewed(storyId: String) {
         val uid = currentUserId ?: return
         viewModelScope.launch {
-            chatRepository.markStoryAsViewed(storyId, uid)
+            storyRepository.markStoryAsViewed(storyId, uid)
         }
     }
 
@@ -299,7 +303,7 @@ class ChatViewModel @Inject constructor(
                     val imageUrl = mediaUploader.upload(context, uri)
                     android.util.Log.d("ChatViewModel", "Upload result: imageUrl=$imageUrl")
                     if (imageUrl != null) {
-                        val result = chatRepository.createStory(imageUrl, "image", caption)
+                        val result = storyRepository.createStory(imageUrl, "image", caption)
                         android.util.Log.d("ChatViewModel", "CreateStory result: $result, userId=$currentUserId")
                         _uploadState.value = UploadState.Success
                     } else {
@@ -614,7 +618,7 @@ class ChatViewModel @Inject constructor(
             try {
                 val chatId = chatRepository.findChatIdByParticipants(story.userId)
                 if (chatId != null) {
-                    chatRepository.sendStoryReplyMessage(
+                    storyRepository.sendStoryReplyMessage(
                         chatId = chatId,
                         storyId = story.id,
                         storyContent = story.content,
@@ -626,7 +630,7 @@ class ChatViewModel @Inject constructor(
                 } else {
                     val newChatId = chatRepository.createDirectChat(story.userId)
                     if (newChatId != null) {
-                        chatRepository.sendStoryReplyMessage(
+                        storyRepository.sendStoryReplyMessage(
                             chatId = newChatId,
                             storyId = story.id,
                             storyContent = story.content,
